@@ -289,6 +289,9 @@ struct PgPool {
 	bool welcome_msg_ready:1;
 
 	int16_t rrcounter;		/* round-robin counter */
+
+	uint16_t client_counter ; /*Will be modified */
+	bool PstmtEmpty:1 ;
 };
 
 #define pool_connected_server_count(pool) ( \
@@ -469,9 +472,7 @@ struct PgSocket {
 	struct prepStmt arrPrepStmt[10];	//Currently 10 per client but will be modified 
 	int arraysize;
 	bool empty:1;
-
-	int numberPrepStmt;	//From the server 
-	bool emptyServerPrepStmt:1;
+	uint16_t ClientID ; 
 
 };
 
@@ -623,3 +624,4 @@ void load_config(void);
 bool set_config_param(const char *key, const char *val);
 void config_for_each(void (*param_cb)(void *arg, const char *name, const char *val, const char *defval, bool reloadable),
 		     void *arg);
+
