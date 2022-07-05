@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "__config": "c",
+        "type_traits": "c",
+        "exception": "c",
+        "limits": "c"
+    }
+}

@@ -97,7 +97,7 @@ static bool handle_server_startup(PgSocket *server, PktHdr *pkt)
 		disconnect_server(server, true, "partial pkt in login phase");
 		return false;
 	}
-
+	print_content(server,pkt,"server");
 	/* ignore most that happens during connect_query */
 	if (server->exec_on_connect) {
 		switch (pkt->type) {
@@ -252,9 +252,10 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	SBuf *sbuf = &server->sbuf;
 	PgSocket *client = server->link;
 	bool async_response = false;
-
+	
+	print_content(server, pkt, "server");
 	Assert(!server->pool->db->admin);
-
+	
 	switch (pkt->type) {
 	default:
 		slog_error(server, "unknown pkt: '%c'", pkt_desc(pkt));
@@ -304,6 +305,9 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	 */
 	case 'E':		/* ErrorResponse */
 		if (server->setting_vars) {
+			print_content(server,pkt,"server");
+			/*
+				Search for the 
 			/*
 			 * the SET and user query will be different TX
 			 * so we cannot report SET error to user.
@@ -517,6 +521,7 @@ static bool handle_sslchar(PgSocket *server, struct MBuf *data)
 /* callback from SBuf */
 bool server_proto(SBuf *sbuf, SBufEvent evtype, struct MBuf *data)
 {
+	
 	bool res = false;
 	PgSocket *server = container_of(sbuf, PgSocket, sbuf);
 	PgPool *pool = server->pool;

@@ -875,12 +875,128 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 	return true;
 }
 
+struct prepStmt getPrepStmt(PgSocket *client, const PktHdr *pkt)
+{
+	struct prepStmt result ; 
+	int size = *(pkt->data.data + 4); // char , 1234 we need to modify it
+	result.size = size;
+	result.ClientStatementID = (char *)malloc (sizeof(char) * (size+1)) ;
+	result.statement = (char *)malloc (sizeof(char) * (size+1)) ;
+	int stmt =0, clientid =0;
+	int i=0;
+	
+	//slog_info(client, "%c" , *(pkt->data.data + 1) );
+	//slog_info(client, "%c" , *(pkt->data.data + 2) );
+	//slog_info(client, "%c" , *(pkt->data.data + 3) );
+	//slog_info(client, "%c" , *(pkt->data.data + 4) );
+	//slog_info(client, "%c" , *(pkt->data.data + 5) );
+//
+	for(;i<size;i++)
+	{
+		//slog_info(client, "%c :: %d ", *(pkt->data.data+i+5) , *(pkt->data.data+i+5 ) );
+
+		if(*(pkt->data.data+i+5) == NULL)
+		{
+			result.ClientStatementID[stmt] = NULL ;
+			i++;
+			break;
+		}else 
+		{
+			result.ClientStatementID[stmt] = *(pkt->data.data+i+5) ;
+			stmt++;
+		}
+	
+	}
+			
+	for( ; i<size;i++)
+	{
+		result.statement[clientid] = *(pkt->data.data+i+5) ;
+		clientid++;
+		if(pkt->data.data == '\0')
+		slog_info(client, "termination found") ; 
+
+	}
+
+	return result ; 
+}
+
+void register_pkt(PgSocket *client, PktHdr *pkt)
+{
+	struct prepStmt psmt ;
+	psmt = getPrepStmt(client, pkt);
+	if(client->empty)
+		client->arraysize = 0;
+	//print_content(client, pkt, "client");
+	
+	if (psmt.ClientStatementID[0] == '\0')
+		return ; 						//We wont be saving the unnamed statement
+	slog_info(client,"The prepstmt id  is %s and the statement is %s", psmt.ClientStatementID , psmt.statement ); 
+
+	//Identify that the statement is not present
+	for(int i=0;i<client->arraysize;i++)
+		if(strcmp(psmt.statement,client->arrPrepStmt[i].statement )==0)
+			return ;
+
+	psmt.isAvailable=1 ;
+	//Allocate a new id
+	
+	if(client->link->emptyServerPrepStmt == 1)
+		client->link->numberPrepStmt = 0;
+	
+	int new_id = ++client->link->numberPrepStmt;
+	client->link->emptyServerPrepStmt = 0;
+	 
+	slog_info(client,"%d", new_id);
+	psmt.ServerStatementID = (char * )malloc(sizeof(char) * (5)) ; 
+	psmt.ServerStatementID[0] = 'S' ;  
+	psmt.ServerStatementID[1] = '_' ;  
+
+	psmt.ServerStatementID[2] = '0' + new_id/10 ;  
+	psmt.ServerStatementID[3] = '0'+ new_id%10 ;  
+	psmt.ServerStatementID[4] = NULL ;
+	
+
+	slog_info(client,"Old_id->%s:: New id->%s",psmt.ClientStatementID , psmt.ServerStatementID) ;
+
+	//Change the packet
+
+	psmt.size += 2 ; //Needs to be changed 
+	//for(int i=0;i<psmt.size-2 ;i++)
+	//	slog_info(client, "Char %c :: %d" ,  pkt->data.data[i] , pkt->data.data[i]) ; 
+
+	pkt->data.data = (uint8_t*) malloc( (sizeof(pkt)/sizeof(uint8_t) +1 )*sizeof(uint8_t));
+
+	int itr =0 ;
+	pkt->data.data[0] = 'P' ;
+	itr++;
+
+	pkt->data.data[4]  = psmt.size ; 
+
+	itr+= 4 ; 
+
+
+	for(int i=0;i<5;i++,itr++)
+		pkt->data.data[itr] = psmt.ServerStatementID[i] ; //Need to be changed
+
+	for(int i=0; itr <  psmt.size-2 ; i++,itr++)
+		pkt->data.data[itr] = psmt.statement[i] ; 
+
+
+	//Add the preparedStatement to array 
+	client->arrPrepStmt[client->arraysize] = psmt ; 
+	client->empty = 0;
+
+	//for(int i=0;i<psmt.size-2 ;i++)
+	//	slog_info(client, "Char %c :: %d" ,  pkt->data.data[i] , pkt->data.data[i]) ; 
+
+}
 /* decide on packets of logged-in client */
 static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
 	SBuf *sbuf = &client->sbuf;
 	int rfq_delta = 0;
 
+	
 	switch (pkt->type) {
 
 	/* one-packet queries */
@@ -916,6 +1032,15 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	case 'E':		/* Execute */
 	case 'C':		/* Close */
 	case 'B':		/* Bind */
+		/*
+		1.	Check that preparedStatement ID exists in the map
+			a.	If not then pass the packet ( An error is expected)
+			b. 	If the prepartedStatement ID exists and the preparedStatement 
+				is made in the same transaction pass the packet (No need to modify).
+			c.	Create the preparedStatement and add it to the map.
+		2.	Modify the packet's preparedStatement and pass it.
+		*/
+
 	case 'D':		/* Describe */
 	case 'd':		/* CopyData(F/B) */
 		break;
@@ -959,6 +1084,13 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	/* tag the server as dirty */
 	client->link->ready = false;
 	client->link->idle_tx = false;
+
+	if(pkt->type=='P')
+		{register_pkt(client, pkt);
+
+		}
+	
+	print_content(client, pkt, "client");
 
 	/* forward the packet */
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);

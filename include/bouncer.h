@@ -374,6 +374,17 @@ struct PgDatabase {
 
 
 /*
+ * Contains the details of the ptepared Statements
+ */
+struct prepStmt{
+	bool isAvailable ; 
+	char *statement ; 
+	char *ClientStatementID;
+	char *ServerStatementID;
+	int size;
+};
+
+/*
  * A client or server connection.
  *
  * ->state corresponds to various lists the struct can be at.
@@ -446,6 +457,22 @@ struct PgSocket {
 	VarCache vars;		/* state of interesting server parameters */
 
 	SBuf sbuf;		/* stream buffer, must be last */
+
+	/*	
+	Map with following field 
+	a. string:: preparedStatement id from the clienSide prospective.
+	b. string:: preparedStatement id from the ServerSide prospective.
+	c. string:: preparedStatement.
+	d. boolean field:: preparedStatement was created in the same transaction.
+	*/
+
+	struct prepStmt arrPrepStmt[10];	//Currently 10 per client but will be modified 
+	int arraysize;
+	bool empty:1;
+
+	int numberPrepStmt;	//From the server 
+	bool emptyServerPrepStmt:1;
+
 };
 
 #define RAW_IOBUF_SIZE	offsetof(IOBuf, buf)

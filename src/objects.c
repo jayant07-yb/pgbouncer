@@ -805,7 +805,10 @@ bool release_server(PgSocket *server)
 	} else if (newstate == SV_TESTED) {
 		return reset_on_release(server);
 	}
-
+	/*
+	1. Get the client to which the server was connected to
+	2. Reset the map
+	*/
 	return true;
 }
 
@@ -1851,3 +1854,24 @@ void objects_cleanup(void)
 	slab_destroy(iobuf_cache);
 	iobuf_cache = NULL;
 }
+
+/* Print the contents of a packet */
+void print_content(PgSocket *server, PktHdr *pkt , char desc[8])
+{
+	char output[pkt->len+1];
+
+	for(int itr=0;itr< pkt->len;itr++)
+	{
+		if(*(pkt->data.data + itr) == 0)
+		output[itr-1] = ' '; 
+		else 
+		output[itr-1] = *(pkt->data.data + itr) ;
+	}
+
+	output[pkt->len] = '\0';
+
+	slog_info(server, "Packet received from the %s with the type %c with data->%s ",desc, pkt->type, output);
+	
+}
+
+
