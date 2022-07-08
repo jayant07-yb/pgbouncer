@@ -63,7 +63,7 @@ enum WaitType {
 
 #define AssertActive(sbuf) do { \
 	Assert((sbuf)->sock > 0); \
-	AssertSanity(sbuf); \
+	(sbuf); \
 } while (0)
 
 /* declare static stuff */

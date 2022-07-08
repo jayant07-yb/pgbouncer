@@ -245,7 +245,8 @@ int user_max_connections(PgUser *user)
 
 /* process packets on logged in connection */
 static bool handle_server_work(PgSocket *server, PktHdr *pkt)
-{
+{	
+
 	bool ready = false;
 	bool idle_tx = false;
 	char state;
@@ -256,6 +257,14 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	print_content(server, pkt, "server");
 	Assert(!server->pool->db->admin);
 	
+	if(server->ignoreStm)
+	{	
+		print_content(server,pkt,"Extra");
+		if(pkt->type=='Z')
+			server->ignoreStm = 0;
+	
+	}
+
 	switch (pkt->type) {
 	default:
 		slog_error(server, "unknown pkt: '%c'", pkt_desc(pkt));
@@ -264,7 +273,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 
 	/* pooling decisions will be based on this packet */
 	case 'Z':		/* ReadyForQuery */
-
+		//server->count =0;
 		/* if partial pkt, wait */
 		if (!mbuf_get_char(&pkt->data, &state))
 			return false;

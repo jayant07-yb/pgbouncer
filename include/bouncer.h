@@ -292,6 +292,12 @@ struct PgPool {
 
 	uint16_t client_counter ; /*Will be modified */
 	bool PstmtEmpty:1 ;
+
+	/*
+	1.	Any prepared Statement will be mapped from the 
+		S_{ID} to {ClientID}{ID}.
+	2.	This {ClientID} will be required to point to an orignal one.
+	*/
 };
 
 #define pool_connected_server_count(pool) ( \
@@ -376,15 +382,15 @@ struct PgDatabase {
 };
 
 
-/*
- * Contains the details of the ptepared Statements
- */
+
 struct prepStmt{
-	bool isAvailable ; 
-	char *statement ; 
-	char *ClientStatementID;
-	char *ServerStatementID;
-	int size;
+	char *packet; //The exact statement that is present;
+	char *ServerStatementID; //The statement ID for matching purposes
+};
+
+struct prepStmtlist{
+	struct prepStmtlist *next, *prev ; //For iterating
+	struct prepStmt *prepstmt;
 };
 
 /*
@@ -461,19 +467,15 @@ struct PgSocket {
 
 	SBuf sbuf;		/* stream buffer, must be last */
 
-	/*	
-	Map with following field 
-	a. string:: preparedStatement id from the clienSide prospective.
-	b. string:: preparedStatement id from the ServerSide prospective.
-	c. string:: preparedStatement.
-	d. boolean field:: preparedStatement was created in the same transaction.
-	*/
+	uint16_t ClientID ;
 
-	struct prepStmt arrPrepStmt[10];	//Currently 10 per client but will be modified 
-	int arraysize;
-	bool empty:1;
-	uint16_t ClientID ; 
+	struct prepStmtlist *ClientPrepStmt;	/* Prepared Statements required by the Client */
+	struct prepStmtlist *ServerPrepStmt; 	/* Prepared Statements active on the Server */
 
+	pthread_mutex_t lock;
+	bool ignoreStm;
+
+	//bool count;
 };
 
 #define RAW_IOBUF_SIZE	offsetof(IOBuf, buf)

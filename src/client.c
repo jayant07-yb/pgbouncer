@@ -875,42 +875,20 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 	return true;
 }
 
-struct prepStmt getPrepStmt(PgSocket *client, const PktHdr *pkt)
+/*
+ * Yugabyte Changes 
+ */
+ 
+struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt)
 {
-	struct prepStmt result ; 
-	int size = *(pkt->data.data + 4); // char , 1234 we need to modify it
-	result.size = size;
-	result.ClientStatementID = (char *)malloc (sizeof(char) * (size+1)) ;
-	result.statement = (char *)malloc (sizeof(char) * (size+1)) ;
-	int stmt =0, clientid =0;
-	int i=0;
-	result.isAvailable= true;
+	struct prepStmt *result = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
 
-	for(;i<size;i++)
-	{
-		//slog_info(client, "%c :: %d ", *(pkt->data.data+i+5) , *(pkt->data.data+i+5 ) );
-
-		if(*(pkt->data.data+i+5) == NULL)
-		{
-			result.ClientStatementID[stmt] = NULL ;
-			i++;
-			break;
-		}else 
-		{
-			result.ClientStatementID[stmt] = *(pkt->data.data+i+5) ;
-			stmt++;
-		}
+	result->packet = (char *)malloc (sizeof(char) * (pkt->data.data[4])) ;
+	int i=5;
+	for( ;i<pkt->data.data[4] && pkt->data.data[i] ;i++); // First NULL
 	
-	}
-			
-	for( ; i<size;i++)
-	{
-		result.statement[clientid] = *(pkt->data.data+i+5) ;
-		clientid++;
-		if(pkt->data.data == '\0')
-		slog_info(client, "termination found") ; 
-
-	}
+	for( ; i<pkt->data.data[4] && pkt->data.data[i] >= 32 ;i++); // First NULL or INVALID Character must terminate
+		result->packet[i] = *(pkt->data.data+i) ;
 
 	return result ; 
 }
@@ -919,11 +897,10 @@ struct prepStmt getPrepStmt(PgSocket *client, const PktHdr *pkt)
 void  getClientID(PgSocket *client)
 {
 	//See if the value has not been initialized
-	if(client->empty)
+	if(!client->ClientPrepStmt)
 		{
 			//Get new ID
 			//Need to add some race coditions 
-			client->empty = 0;
 			if(client->pool->PstmtEmpty)
 				{client->pool->client_counter =0;
 				client->pool->PstmtEmpty = 0;}
@@ -934,49 +911,137 @@ void  getClientID(PgSocket *client)
 
 void register_pkt(PgSocket *client, PktHdr *pkt)
 {
-	struct prepStmt psmt ;
-	psmt = getPrepStmt(client, pkt);
+	struct prepStmt *psmt = getPrepStmt(client, pkt);
 	if (pkt->data.data[5]==NULL)		
-		return ; 						//We wont be saving the unnamed statement
+		return; 						//We wont be saving the unnamed statement
 	getClientID(client);
-	slog_info(client,"5the char:%c",pkt->data.data[5]);//,pkt->data.data[5],pkt->data.data[6]);
+
+	int terma =  (client->ClientID)/50 , termb=(client->ClientID)%50;
 	
-	pkt->data.data[5]= (client->ClientID)/100 + 'A' ; 	//Check and change this number
-	pkt->data.data[6]= (client->ClientID)%100 + 'A' ; 	//Check and change this number
+	if(terma < 26)
+		pkt->data.data[5]= (client->ClientID)/50 + 'A' ; 	//Check and change this number
+	else 
+		pkt->data.data[5]= (client->ClientID)/50 + 'a' - 26 ; 	//Check and change this number
 	
-	return ;
-	psmt.ServerStatementID = (uint8_t *)malloc(sizeof(uint8_t)*pkt->data.data[4]) ; 
+	if(termb < 26)
+		pkt->data.data[6]= (client->ClientID)%50 + 'A' ; 	//Check and change this number
+	else 
+		pkt->data.data[6]= (client->ClientID)%50 + 'a' - 26 ; 	//Check and change this number
+	
+	psmt->ServerStatementID = (uint8_t *)malloc(sizeof(uint8_t)*pkt->data.data[4]) ; 
 	for(int itr=5;pkt->data.data[itr-1] ;itr++)
-		psmt.ServerStatementID[itr-5] = pkt->data.data[itr] ; 
+		psmt->ServerStatementID[itr-5] = pkt->data.data[itr] ; 
+
+	struct prepStmtlist *temp;
 	
-	slog_info(client,"Old_id->%s:: New id->%s",psmt.ClientStatementID , psmt.ServerStatementID) ;
-
-	//Add the preparedStatement to array 
-	client->arrPrepStmt[client->arraysize++] = psmt ; 
-	client->empty = 0;
-
+	/*	Add the preparedStatement to client list */
+	temp = (struct prepStmtlist *)malloc(sizeof(struct prepStmtlist)) ;
+	temp->prepstmt = psmt;
+	temp->next = client->ClientPrepStmt;
+	client->ClientPrepStmt = temp;
+	
+	/*	Add the preparedStatement to Server list */
+	temp = (struct prepStmtlist *)malloc(sizeof(struct prepStmtlist)) ;
+	temp->prepstmt = psmt;
+	temp->next = client->link->ServerPrepStmt;
+	client->link->ServerPrepStmt = temp;
 }
+
 void replace_id(PgSocket *client, PktHdr *pkt)
 {
-	
 	/*	Only temperory solution */
 	if(pkt->data.data[6] != 'S' || pkt->data.data[7] != '_')
 		return ; 
-	
-	slog_info(client, "Got here");
+
 	//We are getting the ID from the client to the server 
 	//We simply need to replace the packet id with the Client ID
 	getClientID(client);//Just in Case, Need to add the error Handler 
-	pkt->data.data[6]= (client->ClientID)/100 +'A' ; 	//Check and change this number
-	pkt->data.data[7]= (client->ClientID)%100 +'A' ; 	//Check and change this number
+
+	int terma =  (client->ClientID)/50 , termb=(client->ClientID)%50;
+	
+	if(terma < 26)
+		pkt->data.data[5]= (client->ClientID)/50 + 'A'  ; 	//Check and change this number
+	else 
+		pkt->data.data[5]= (client->ClientID)/50 + 'a' - 26 ; 	//Check and change this number
+	
+	if(termb < 26)
+		pkt->data.data[6]= (client->ClientID)%50 + 'A'  ; 	//Check and change this number
+	else 
+		pkt->data.data[6]= (client->ClientID)%50 + 'a' - 26 ; 	//Check and change this number
 	//It is replaced
 }
-void addPrepStmt(PgSocket *client, PktHdr *pkt)
+
+bool matchServerPstmtID(PgSocket *server, PktHdr *pkt, struct prepStmt *ppstmt)
 {
-	//	Search for the pkt->data.data[0]... NULL
-	//	If not found return 0 , it will mean to skip the change
-	//	If found but statement not ready then prepare
-	//	Return 1
+	for(char *serverID =  ppstmt->ServerStatementID , *pktval = pkt->data.data+6 ;*pktval!=NULL  && *serverID!=NULL ; pktval++  , serverID++)
+			if(!(*pktval == *serverID))
+				return 0;
+
+	return 1;
+}
+
+void tostring(char *arr , int len)
+{
+	while(len)
+	{
+		if(*arr > 128 ||  *arr == NULL)
+			*arr = ' ';
+		arr++;
+		len--; 
+	}
+}
+
+void makeready(PgSocket *server, struct prepStmt *ppstmt)
+{	
+	bool res;
+		
+	tostring(ppstmt->packet,ppstmt->packet[4]);
+	char *command = (char *)malloc(sizeof(char)*(12+ppstmt->packet[5])) ; 
+	strcpy(command,"PREPARE ");
+	strcat(command,ppstmt->ServerStatementID);
+	strcat(command," AS ");
+	//First space 
+	int itr =5 ;
+	while(ppstmt->packet[itr]!=' ')
+		itr++;
+	itr++;
+	strcat(command,ppstmt->packet+itr);
+
+	for(int i=0 ;i< strlen(command);i++)
+		if(command[i] <= 32 || command[i] ==  NULL || command[i] == '\0')
+			command[i] = ' ';
+
+
+	slog_info(server,"Preparing the Statement::--%s",command);
+
+	SEND_generic(res, server, 'Q', "s", command );
+
+}
+
+void addPrepStmt(PgSocket *server, PktHdr *pkt)
+{
+	//The pkt has been modified with the right name
+	//We need to search that is it is the server->ServerPrep
+
+	for(struct prepStmtlist *itr=server->ServerPrepStmt;itr!=NULL;itr=itr->next)
+	{	
+		slog_info(server,"The statements for searching are \n%s \n %s",pkt->data.data , itr->prepstmt->packet );
+		if(matchServerPstmtID(server, pkt,itr->prepstmt))
+			return;
+		
+	}
+		
+	//Prepare the statement
+	slog_info(server->link,"Need to prepare the statment");
+
+	for(struct prepStmtlist *itr=server->link->ClientPrepStmt;itr!=NULL;itr=itr->next)
+	{
+		slog_info(server,"The statements for preparing are \n%s \n %s",pkt->data.data , itr->prepstmt->packet );
+		if(matchServerPstmtID(server,pkt,itr->prepstmt))
+				makeready(server,itr->prepstmt);
+	}
+
+
 }
 
 /* decide on packets of logged-in client */
@@ -1019,19 +1084,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	case 'P':		/* Parse */
 	case 'E':		/* Execute */
 	case 'C':		/* Close */
-		break;
 	case 'B':		/* Bind */
-		/*
-		1.	Check that preparedStatement ID exists in the map
-			a.	If not then pass the packet ( An error is expected)
-			b. 	If the prepartedStatement ID exists and the preparedStatement 
-				is made in the same transaction pass the packet (No need to modify).
-			c.	Create the preparedStatement and add it to the map.
-		2.	Modify the packet's preparedStatement and pass it.
-		*/
-		//addPrepStmt(client,pkt);
-		
-
 	case 'D':		/* Describe */
 	case 'd':		/* CopyData(F/B) */
 		break;
@@ -1079,9 +1132,22 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	if(pkt->type=='P')
 		{
 			register_pkt(client, pkt);
+			slog_info(client,"Packet type P is detected");
 		}else if(pkt->type=='B')
-		replace_id(client, pkt);
-	
+		{
+/*
+ * 1. Check that preparedStatement ID exists in the map
+ *  a.	If not then pass the packet ( An error is expected)
+ *  b. 	If the prepartedStatement ID exists and the preparedStatement 
+ *  	is made in the same transaction pass the packet (No need to modify).
+ *  c.	Create the preparedStatement and add it to the map.
+ * 2. Modify the packet's preparedStatement and pass it.
+ */
+			slog_info(client,"Packet type B is detected");
+			replace_id(client, pkt);
+			addPrepStmt(client->link,pkt);
+		}
+	slog_info(client,"Reached here");
 	print_content(client, pkt, "client");
 
 	/* forward the packet */
