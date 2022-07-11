@@ -922,8 +922,8 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 
 	if (pkt->data.data[5]==NULL)		
 		return; 						//We wont be saving the unnamed statement
-	for(int i=0;i<pkt->data.data[4];i++ )
-		slog_info(NULL,"Value per char%c::%d;",pkt->data.data[i]);
+	//for(int i=0;i<pkt->data.data[4];i++ )
+	//	slog_info(NULL,"Value per char%c::%d;",pkt->data.data[i]);
 
 	struct prepStmt *psmt = getPrepStmt(client, pkt);
 	getClientID(client);
@@ -1018,8 +1018,8 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt)
 	//pktbuf_put_string(buf, ppstmt->realpacket+itr);
 
 	//pktbuf_finish_packet(buf);
-	print_contentS(NULL,buf->buf,buf->buf_len);
-	slog_info(NULL,"Heere%d", buf->buf_len);
+	//print_contentS(NULL,buf->buf,buf->buf_len);
+	//slog_info(NULL,"Heere%d", buf->buf_len);
 
 	res = pktbuf_send_immediate(buf, server);
 	/*
@@ -1182,10 +1182,10 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 	if(pkt->type=='P')
 		{
-			for(int i=0;i<pkt->len;i++)
-				slog_info(NULL,"Values are::%c--%d" , pkt->data.data[i],pkt->data.data[i]);
+			//for(int i=0;i<pkt->len;i++)
+			//	slog_info(NULL,"Values are::%c--%d" , pkt->data.data[i],pkt->data.data[i]);
 			register_pkt(client, pkt);
-			slog_info(client,"Packet type P is detected");
+			//slog_info(client,"Packet type P is detected");
 		}else if(pkt->type=='B')
 		{
 /*
@@ -1196,14 +1196,14 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
  *  c.	Create the preparedStatement and add it to the map.
  * 2. Modify the packet's preparedStatement and pass it.
  */
-			slog_info(client,"Packet type B is detected");
+			//slog_info(client,"Packet type B is detected");
 			
 			replace_id(client, pkt);
 			addPrepStmt(client->link,pkt);
-			for(int i=0;i<pkt->len;i++)
-				slog_info(NULL,"Values are::%c--%d" , pkt->data.data[i],pkt->data.data[i]);
+			//for(int i=0;i<pkt->len;i++)
+			//	slog_info(NULL,"Values are::%c--%d" , pkt->data.data[i],pkt->data.data[i]);
 
-			slog_info(NULL,"EMPTY::%c,%d",pkt->data.data[5], pkt->data.data[9]);
+			//slog_info(NULL,"EMPTY::%c,%d",pkt->data.data[5], pkt->data.data[9]);
 			
 		}
 
