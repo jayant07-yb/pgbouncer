@@ -214,7 +214,8 @@ bool sbuf_pause(SBuf *sbuf)
 
 /* resume from pause, start waiting for data */
 void sbuf_continue(SBuf *sbuf)
-{
+{	
+	slog_info(NULL, "Called from sbuf_continue");
 	bool do_recv = DO_RECV;
 	bool res;
 	AssertActive(sbuf);
@@ -372,6 +373,7 @@ void sbuf_prepare_fetch(SBuf *sbuf, unsigned amount)
  */
 static bool sbuf_call_proto(SBuf *sbuf, int event)
 {
+	slog_info(NULL, "Sbuff Call Procto CALLED");
 	struct MBuf mbuf;
 	IOBuf *io = sbuf->io;
 	bool res;
@@ -412,8 +414,9 @@ static bool sbuf_wait_for_data(SBuf *sbuf)
 
 static void sbuf_recv_forced_cb(evutil_socket_t sock, short flags, void *arg)
 {
+	//This might be usefull
 	SBuf *sbuf = arg;
-
+	slog_info(NULL, "ENtered heere");
 	sbuf->wait_type = W_NONE;
 
 	if (sbuf_wait_for_data(sbuf)) {
@@ -847,6 +850,7 @@ static ssize_t raw_sbufio_recv(struct SBuf *sbuf, void *dst, size_t len)
 
 static ssize_t raw_sbufio_send(struct SBuf *sbuf, const void *data, size_t len)
 {
+	slog_info(NULL,"Safe Send used");
 	return safe_send(sbuf->sock, data, len, 0);
 }
 

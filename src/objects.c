@@ -83,7 +83,7 @@ int get_active_server_count(void)
 static void construct_client(void *obj)
 {
 	PgSocket *client = obj;
-
+	slog_info(client,"Constructor Called");
 	memset(client, 0, sizeof(PgSocket));
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
@@ -1871,6 +1871,28 @@ void print_content(PgSocket *server, PktHdr *pkt , char desc[8])
 	output[pkt->len] = '\0';
 
 	slog_info(server, "Packet received from the %s with the type %c with data->%s ",desc, pkt->type, output);
+	
+}
+
+
+
+
+/* Print the contents of a packet */
+void print_contentS(PgSocket *server, uint8_t *arr , int size)
+{
+	char output[size+1];
+
+	for(int itr=0;itr< size;itr++)
+	{
+		if(*(arr + itr) == 0)
+		output[itr-1] = ' '; 
+		else 
+		output[itr-1] = *(arr + itr) ;
+	}
+
+	output[size] = '\0';
+
+	slog_info(server, "Packet received from the with data->%s ",output);
 	
 }
 
