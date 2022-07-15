@@ -32,6 +32,7 @@
  * to packet body.
  */
 struct PktHdr {
+	bool intercepted; // Intercept this packet
 	unsigned type;
 	unsigned len;
 	struct MBuf data;

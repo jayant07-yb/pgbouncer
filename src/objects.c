@@ -1885,14 +1885,14 @@ void print_contentS(PgSocket *server, uint8_t *arr , int size)
 	for(int itr=0;itr< size;itr++)
 	{
 		if(*(arr + itr) == 0)
-		output[itr-1] = ' '; 
+		output[itr] = ' '; 
 		else 
-		output[itr-1] = *(arr + itr) ;
+		output[itr] = *(arr + itr) ;
 	}
 
 	output[size] = '\0';
 
-	slog_info(server, "Packet received from the with data->%s ",output);
+	slog_info(server, "Packet received >%s ",output);
 	
 }
 

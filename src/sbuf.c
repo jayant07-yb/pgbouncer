@@ -141,6 +141,7 @@ bool sbuf_accept(SBuf *sbuf, int sock, bool is_unix)
 	}
 	return true;
 failed:
+	slog_info(NULL,"Failed from sbuf_accept");
 	sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 	return false;
 }
@@ -215,7 +216,7 @@ bool sbuf_pause(SBuf *sbuf)
 /* resume from pause, start waiting for data */
 void sbuf_continue(SBuf *sbuf)
 {	
-	slog_info(NULL, "Called from sbuf_continue");
+	//slog_info(NULL, "Called from sbuf_continue");
 	bool do_recv = DO_RECV;
 	bool res;
 	AssertActive(sbuf);
@@ -223,6 +224,8 @@ void sbuf_continue(SBuf *sbuf)
 	res = sbuf_wait_for_data(sbuf);
 	if (!res) {
 		/* drop if problems */
+
+	slog_info(NULL,"Failed from sbuf_continue");
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 		return;
 	}
@@ -373,7 +376,7 @@ void sbuf_prepare_fetch(SBuf *sbuf, unsigned amount)
  */
 static bool sbuf_call_proto(SBuf *sbuf, int event)
 {
-	slog_info(NULL, "Sbuff Call Procto CALLED");
+	//slog_info(NULL, "Sbuff Call Procto CALLED");
 	struct MBuf mbuf;
 	IOBuf *io = sbuf->io;
 	bool res;
@@ -422,6 +425,8 @@ static void sbuf_recv_forced_cb(evutil_socket_t sock, short flags, void *arg)
 	if (sbuf_wait_for_data(sbuf)) {
 		sbuf_recv_cb(sock, flags, arg);
 	} else {
+
+	slog_info(NULL,"Failed from sbuf_recv_forced_cb");
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 	}
 }
@@ -657,10 +662,12 @@ static bool sbuf_actual_recv(SBuf *sbuf, size_t len)
 		io->recv_pos += got;
 	} else if (got == 0) {
 		/* eof from socket */
+		slog_info(NULL,"Failed from sbuf_actual_recv");
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 		return false;
 	} else if (got < 0 && errno != EAGAIN) {
 		/* some error occurred */
+		slog_info(NULL,"Failed from sbuf_actual_recv");
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 		return false;
 	}
@@ -679,6 +686,7 @@ static bool allocate_iobuf(SBuf *sbuf)
 	if (sbuf->io == NULL) {
 		sbuf->io = slab_alloc(iobuf_cache);
 		if (sbuf->io == NULL) {
+				slog_info(NULL,"Failed from allocate_iobuf");
 			sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 			return false;
 		}
@@ -850,7 +858,7 @@ static ssize_t raw_sbufio_recv(struct SBuf *sbuf, void *dst, size_t len)
 
 static ssize_t raw_sbufio_send(struct SBuf *sbuf, const void *data, size_t len)
 {
-	slog_info(NULL,"Safe Send used");
+	//slog_info(NULL,"Safe Send used");
 	return safe_send(sbuf->sock, data, len, 0);
 }
 

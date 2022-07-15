@@ -311,7 +311,7 @@ void pktbuf_write_generic(PktBuf *buf, int type, const char *pktdesc, ...)
 	pktbuf_start_packet(buf, type);
 	
 	va_start(ap, pktdesc);
-	slog_info(NULL,"Reache here successfully%c , %c", type , *pktdesc );
+	//slog_info(NULL,"Reache here successfully%c , %c", type , *pktdesc );
 
 	while (*adesc) {
 		switch (*adesc) {

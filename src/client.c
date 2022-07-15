@@ -878,7 +878,7 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 /*
  * Yugabyte Changes 
  */
- 
+ bool sendD = 0;
 const char mapp[] = {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3','4','5','6','7','8','9','_'};
 struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt)
 {
@@ -898,6 +898,18 @@ struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt)
 		if(result->packet[j] <= 32)
 			result->packet[j] = ' ';	
 
+	result->ServerStatementID = (uint8_t *)malloc(sizeof(uint8_t)*pkt->data.data[4]) ; 
+	for(int itr=5;pkt->data.data[itr-1] ;itr++)
+	result->ServerStatementID[itr-5] = pkt->data.data[itr] ; 
+
+	result->size = pkt->len ; 
+	result->realpacket = (uint8_t *)malloc(sizeof(uint8_t )*pkt->len);
+	slog_info(NULL,"Registering %s",result->ServerStatementID);
+	for(int i=0;i<pkt->len;i++)
+	{
+		result->realpacket[i] = pkt->data.data[i];
+	}
+
 	return result ; 
 }
 
@@ -908,37 +920,25 @@ void  getClientID(PgSocket *client)
 	if(!client->ClientPrepStmt)
 		{
 			//Get new ID
-			//Need to add some race coditions 
+			//Need to add some race conditions 
 			if(client->pool->PstmtEmpty)
 				{client->pool->client_counter =0;
 				client->pool->PstmtEmpty = 0;}
 			client->ClientID = ++client->pool->client_counter;
 		}
-	return  1;
 }
 
 void register_pkt(PgSocket *client, PktHdr *pkt)
 {
-
 	if (pkt->data.data[5]==NULL)		
-		return; 						//We wont be saving the unnamed statement
-	//for(int i=0;i<pkt->data.data[4];i++ )
-	//	slog_info(NULL,"Value per char%c::%d;",pkt->data.data[i]);
+		return; 						//We wont be saving the unnamed statement.
 
-	struct prepStmt *psmt = getPrepStmt(client, pkt);
-	getClientID(client);
-	psmt->size = pkt->len ; 
-	psmt->realpacket = (uint8_t *)malloc(sizeof(uint8_t )*pkt->len);
-	for(int i=0;i<pkt->len;i++)
-		psmt->realpacket[i] = pkt->data.data[i];
+	getClientID(client);	//Make sure that an ID has been allocated to the client.
 
-		pkt->data.data[5]= mapp[(client->ClientID)/36] ; 	//Check and change this number
-		pkt->data.data[6]= mapp[(client->ClientID)%36] ; 	//Check and change this number
+	pkt->data.data[5]= mapp[(client->ClientID)/36] ; 	//Check and change this number
+	pkt->data.data[6]= mapp[(client->ClientID)%36] ; 	//Check and change this number
 	
-	psmt->ServerStatementID = (uint8_t *)malloc(sizeof(uint8_t)*pkt->data.data[4]) ; 
-	for(int itr=5;pkt->data.data[itr-1] ;itr++)
-		psmt->ServerStatementID[itr-5] = pkt->data.data[itr] ; 
-
+	struct prepStmt *psmt = getPrepStmt(client, pkt);
 	struct prepStmtlist *temp;
 	
 	/*	Add the preparedStatement to client list */
@@ -963,13 +963,9 @@ void replace_id(PgSocket *client, PktHdr *pkt)
 	//We are getting the ID from the client to the server 
 	//We simply need to replace the packet id with the Client ID
 	getClientID(client);//Just in Case, Need to add the error Handler 
-
+	//slog_info(client,"Replacing the values at 6th and 7th::%c;%c by %c:%c",pkt->data.data[6], pkt->data.data[7],mapp[(client->ClientID)/36],mapp[(client->ClientID)%36]);
 	pkt->data.data[6]= mapp[(client->ClientID)/36]  ; 	//Check and change this number
 	pkt->data.data[7]= mapp[(client->ClientID)%36]  ; 	//Check and change this number
-	
-	
-
-	//It is replaced
 }
 
 bool matchServerPstmtID(PgSocket *server, PktHdr *pkt, struct prepStmt *ppstmt)
@@ -983,121 +979,164 @@ bool matchServerPstmtID(PgSocket *server, PktHdr *pkt, struct prepStmt *ppstmt)
 
 void makeready(PgSocket *server, struct prepStmt *ppstmt)
 {	
+	
 	bool res;
-	PktBuf *buf = pktbuf_dynamic(1024);
-		/* Parse */
+	PktBuf *buf = pktbuf_dynamic(512);
+	char *csd= (char * )malloc(sizeof(char)*(strlen(ppstmt->ServerStatementID)+1));
+
+	//pktbuf_write_generic(buf, 'P', "csh",ppstmt->ServerStatementID,0, "INSERT INTO test_table VALUES ($1, 'Prepared_Statement', 1 )" , 0);
+
+	//	/* Parse */
 	pktbuf_start_packet(buf, 'P');
-	for(int i=5;i<ppstmt->realpacket[4];i++)
+
+	///* Need to change the size */
+	for(int i=5;i<ppstmt->size;i++)
+	{
+		//slog_info(server,"%d, %d:::%c", i, ppstmt->realpacket[i],ppstmt->realpacket[i]);
 		pktbuf_put_char(buf,ppstmt->realpacket[i]);
-
-	//char *command = (char *)malloc(sizeof(char)*(12+strlen(ppstmt->packet))) ; 
-	//strcat(command,ppstmt->ServerStatementID);
-	//strcat(command," ");
-	//command[strlen(command) -1] = NULL ;
-	//strcat(command,ppstmt->packet);
-
+	}
+	pktbuf_finish_packet(buf);
+	server->ignore++ ;
+	//slog_info(server,"Prepared the Packet with lenght::%d", buf->buf_len);
+//
+	//print_contentS(server,buf->buf,buf->buf_len);
+//	print_contentS(server, buf->buf ,buf->buf_len);
 	
-
-	//pktbuf_write_generic(buf , 'P', "c",0, command,0);
-
-	
-	//pktbuf_put_string(buf,command);
-	//pktbuf_finish_packet(buf);
-	//pktbuf_put_char(buf,NULL);	/* statement name */
-	//pktbuf_put_char(buf,NULL);	/* statement name */
-	//pktbuf_put_char(buf,NULL);	/* statement name */
-	//pktbuf_put_char(buf,ppstmt->realpacket[4]);
-	////pktbuf_put_string(buf,"s_1 ");
-	//pktbuf_put_string(buf,ppstmt->packet);
-	//for(int i=1;i<ppstmt->size && i-4<ppstmt->realpacket[4];i++)
-	//	pktbuf_put_char(buf,ppstmt->realpacket[i]);
-
-	//pktbuf_put_char(buf,ppstmt->realpacket[4]);//The real size will be maintained
-	//pktbuf_put_string(buf, ppstmt->realpacket+5);	/* statement name */
-	//pktbuf_put_char(buf,NULL);	/* statement name */
-	//pktbuf_put_string(buf, ppstmt->realpacket+itr);
-
-	//pktbuf_finish_packet(buf);
-	//print_contentS(NULL,buf->buf,buf->buf_len);
-	//slog_info(NULL,"Heere%d", buf->buf_len);
-
+//	pktbuf_write_generic(buf, 'S', "");
+	//slog_info(server,"Going to send the above packet with pos%x with %d" , server->sbuf.io , server->sbuf.pkt_remain);
+	//server->link->expect_rfq_count++;
+	//server->ignore = 1;
 	res = pktbuf_send_immediate(buf, server);
-	/*
-	char *command = (char *)malloc(sizeof(char)*(12+strlen(ppstmt->packet))) ; 
+	//slog_info(server,"After Going to send the above packet with pos%x" , server->sbuf.dst );
+
+	//slog_info(server,"After sending the above packet with pos%x with %d" , server->sbuf.io , server->sbuf.pkt_remain);
+	print_contentS(server,buf->buf,buf->buf_len);
 	
-	//strcpy(command,"PREPARE ");
-	//strcat(command,ppstmt->ServerStatementID);
-	//strcat(command," AS ");
-	//strcat(command,ppstmt->packet);
-	
-//strcpy(command,ppstmt->ServerStatementID);
-strcat(command,"as1 ");
-strcat(command,ppstmt->packet);
+	pktbuf_free(buf);
 
-	slog_info(server,"Preparing the Statement::--%s",command);
-	for(char * a = command; *a !=NULL ;a++ );
-	//slog_info(server, "Character Involved::%c,%d" ,  *a,*a);
-	
-
-	//pktbuf_write_generic(buf , 'P', "csh",0, command,0);
-	pktbuf_write_generic(buf , 'P', "csh");
-
-	//print_content(NULL,buf->buf,"Dummy");
-
-	print_contentS(NULL,buf->buf,buf->buf_len);
-	//pktbuf_write_generic(buf , 'P',ppstmt->realpacket);
-	exit(0);
-
-	res = pktbuf_send_immediate(buf, server);
-	
-	//if (buf) {
-	//	pktbuf_write_ExtQuery(buf, cf_auth_query, 1, username);
-	//	
-	//	pktbuf_free(buf);
-	//SEND_generic(res, server, 'Q', "s", command );
-	//SEND_generic(res,server,'P','b',"as", ppstmt->realpacket);
-	//	Add the preparedStatement to Server list 
+	sendD =1;
+	/*	Add the preparedStatement to Server list */
 	struct prepStmtlist *temp;
 	temp = (struct prepStmtlist *)malloc(sizeof(struct prepStmtlist)) ;
-	temp->prepstmt = ppstmt;	//Need to be changed
+	temp->prepstmt = ppstmt;
 	temp->next = server->ServerPrepStmt;
 	server->ServerPrepStmt = temp;
-	*/
-
 
 }
 
-void addPrepStmt(PgSocket *server, PktHdr *pkt)
+struct prepStmtlist * removeNode(struct prepStmtlist *itr)
+{
+	/*
+	struct prepStmtlist{
+	struct prepStmtlist *next, *prev ; //For iterating
+	struct prepStmt *prepstmt;
+	};
+	*/
+	//The prepstmt is already NULL so no need to remove it
+	//We have to return the *next;
+	//Need to add the mutex lock
+	if(itr->next != NULL )
+	{
+		itr->next->prev  = itr->prev;
+	}
+
+	//Need to add the mutex lock
+	if(itr->prev != NULL )
+	{
+		itr->prev->next  = itr->next;
+	}
+
+	struct prepStmtlist *next = itr->next ; //Location copied
+	free(itr->next);
+	free(itr->prev);
+	free(itr);
+	return next;
+
+}
+
+void ClosePPSTMT(PgSocket *server, struct prepStmt *ppstmt )
+{}
+
+void verifyPrepStmt(PgSocket *server, const PktHdr const *pkt)
 {
 	//The pkt has been modified with the right name
 	//We need to search that is it is the server->ServerPrep
-
+	if(!pkt->data.data[6])
+		return ;
+		
 	for(struct prepStmtlist *itr=server->ServerPrepStmt;itr!=NULL;itr=itr->next)
 	{	
+		/*
+		while(itr->prepstmt->realpacket == NULL) 
+		{
+			//i.e. The value has been delete 
+			itr = removeNode(itr);//Returns the next value;
+			//Close the ppstmt
+			ClosePPSTMT(server,itr->prepstmt);
+		}
+		*/
 		if(matchServerPstmtID(server, pkt,itr->prepstmt))
 		{
-			slog_info(server, "Matched!!!!");
+		//	slog_info(server, "Matched!!!!");
 			return;
 		}
 		
 	}
-		
+
 	//Prepare the statement
 	slog_info(server->link,"Need to prepare the statment");
 
 	for(struct prepStmtlist *itr=server->link->ClientPrepStmt;itr!=NULL;itr=itr->next)
-	{
-		slog_info(server,"The statements for preparing are \n%s \n %s",pkt->data.data , itr->prepstmt->packet );
+	{	
+		//slog_info(server,"Matching!!....");
 		if(matchServerPstmtID(server,pkt,itr->prepstmt))
+			{
+		//		slog_info(server,"The statements for preparing are \n%s \n %s",pkt->data.data , itr->prepstmt->packet );
 				makeready(server,itr->prepstmt);
-	}
+				break;
+			}
+		
+		}
 
 
 }
 
+void sendtypeD(PgSocket *server)
+{	
+
+	bool res;
+	PktBuf *buf = pktbuf_dynamic(32);
+	pktbuf_start_packet(buf, 'D');
+	pktbuf_put_char(buf,'P');
+	pktbuf_finish_packet(buf);
+	slog_info(server,"Constructed the packet Buffer for type D");
+	print_contentS(server,buf->buf,buf->buf_len);
+	res = pktbuf_send_immediate(buf, server);
+	print_contentS(server,buf->buf,buf->buf_len);
+	pktbuf_free(buf);
+	
+}
 /* decide on packets of logged-in client */
 static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
+	if(( pkt->type == 'P' || pkt->type == 'B') )
+	{	
+		/* acquire server */
+		if (!find_server(client))
+			return false;
+		
+		slog_info(client,"From client::%x,to Server%x", client, client->link );
+
+		if(pkt->type=='P' && pkt->data.data[5] == 'S' )
+			register_pkt(client, pkt);
+		else if(pkt->type=='B' && pkt->data.data[6] == 'S')
+		{
+			replace_id(client, pkt);
+			verifyPrepStmt(client->link,pkt);
+
+		}
+	} 
+
 	SBuf *sbuf = &client->sbuf;
 	int rfq_delta = 0;
 
@@ -1163,8 +1202,12 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	}
 
 	if (client->pool->db->admin)
+	{
+		//slog_info(client,"Admin user detected");
 		return admin_handle_client(client, pkt);
 
+	}
+		
 	/* acquire server */
 	if (!find_server(client))
 		return false;
@@ -1179,38 +1222,11 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	/* tag the server as dirty */
 	client->link->ready = false;
 	client->link->idle_tx = false;
-
-	if(pkt->type=='P')
-		{
-			//for(int i=0;i<pkt->len;i++)
-			//	slog_info(NULL,"Values are::%c--%d" , pkt->data.data[i],pkt->data.data[i]);
-			register_pkt(client, pkt);
-			//slog_info(client,"Packet type P is detected");
-		}else if(pkt->type=='B')
-		{
-/*
- * 1. Check that preparedStatement ID exists in the map
- *  a.	If not then pass the packet ( An error is expected)
- *  b. 	If the prepartedStatement ID exists and the preparedStatement 
- *  	is made in the same transaction pass the packet (No need to modify).
- *  c.	Create the preparedStatement and add it to the map.
- * 2. Modify the packet's preparedStatement and pass it.
- */
-			//slog_info(client,"Packet type B is detected");
-			
-			replace_id(client, pkt);
-			addPrepStmt(client->link,pkt);
-			//for(int i=0;i<pkt->len;i++)
-			//	slog_info(NULL,"Values are::%c--%d" , pkt->data.data[i],pkt->data.data[i]);
-
-			//slog_info(NULL,"EMPTY::%c,%d",pkt->data.data[5], pkt->data.data[9]);
-			
-		}
-
+	
 	print_content(client, pkt, "client");
-
 	/* forward the packet */
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
+
 
 	return true;
 }

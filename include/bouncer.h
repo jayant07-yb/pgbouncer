@@ -388,6 +388,10 @@ struct prepStmt{
 	char *ServerStatementID; //The statement ID for matching purposes
 	uint8_t *realpacket ; 
 	int size;
+
+	//For Close Statements
+	char *closeStmt; 
+	int closeStmtSize;
 };
 
 struct prepStmtlist{
@@ -476,7 +480,7 @@ struct PgSocket {
 
 	pthread_mutex_t lock;
 	bool ignoreStm;
-
+	uint8_t ignore;
 	//bool count;
 };
 
