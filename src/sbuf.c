@@ -141,7 +141,7 @@ bool sbuf_accept(SBuf *sbuf, int sock, bool is_unix)
 	}
 	return true;
 failed:
-	slog_info(NULL,"Failed from sbuf_accept");
+	//slog_info(NULL,"Failed from sbuf_accept");
 	sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 	return false;
 }
@@ -225,7 +225,7 @@ void sbuf_continue(SBuf *sbuf)
 	if (!res) {
 		/* drop if problems */
 
-	slog_info(NULL,"Failed from sbuf_continue");
+	//slog_info(NULL,"Failed from sbuf_continue");
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 		return;
 	}
@@ -426,7 +426,7 @@ static void sbuf_recv_forced_cb(evutil_socket_t sock, short flags, void *arg)
 		sbuf_recv_cb(sock, flags, arg);
 	} else {
 
-	slog_info(NULL,"Failed from sbuf_recv_forced_cb");
+	//slog_info(NULL,"Failed from sbuf_recv_forced_cb");
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 	}
 }
@@ -662,12 +662,12 @@ static bool sbuf_actual_recv(SBuf *sbuf, size_t len)
 		io->recv_pos += got;
 	} else if (got == 0) {
 		/* eof from socket */
-		slog_info(NULL,"Failed from sbuf_actual_recv");
+		//slog_info(NULL,"Failed from sbuf_actual_recv");
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 		return false;
 	} else if (got < 0 && errno != EAGAIN) {
 		/* some error occurred */
-		slog_info(NULL,"Failed from sbuf_actual_recv");
+		//slog_info(NULL,"Failed from sbuf_actual_recv");
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 		return false;
 	}
@@ -686,7 +686,7 @@ static bool allocate_iobuf(SBuf *sbuf)
 	if (sbuf->io == NULL) {
 		sbuf->io = slab_alloc(iobuf_cache);
 		if (sbuf->io == NULL) {
-				slog_info(NULL,"Failed from allocate_iobuf");
+				//slog_info(NULL,"Failed from allocate_iobuf");
 			sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 			return false;
 		}

@@ -904,7 +904,7 @@ struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt)
 
 	result->size = pkt->len ; 
 	result->realpacket = (uint8_t *)malloc(sizeof(uint8_t )*pkt->len);
-	slog_info(NULL,"Registering %s",result->ServerStatementID);
+	//slog_info(NULL,"Registering %s",result->ServerStatementID);
 	for(int i=0;i<pkt->len;i++)
 	{
 		result->realpacket[i] = pkt->data.data[i];
@@ -970,9 +970,14 @@ void replace_id(PgSocket *client, PktHdr *pkt)
 
 bool matchServerPstmtID(PgSocket *server, PktHdr *pkt, struct prepStmt *ppstmt)
 {
-	for(char *serverID =  ppstmt->ServerStatementID , *pktval = pkt->data.data+6 ;*pktval > 32  && *serverID > 32 ; pktval++  , serverID++)
-			if(!(*pktval == *serverID))
-				return 0;
+	for(char *serverID =  ppstmt->ServerStatementID , *pktval = pkt->data.data+6 ;*pktval > 32  ; pktval++  , serverID++)
+	{
+		if(*serverID <= 32 )
+		return 0;
+		if(!(*pktval == *serverID))
+			return 0;
+	}
+
 
 	return 1;
 }
@@ -984,34 +989,18 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt)
 	PktBuf *buf = pktbuf_dynamic(512);
 	char *csd= (char * )malloc(sizeof(char)*(strlen(ppstmt->ServerStatementID)+1));
 
-	//pktbuf_write_generic(buf, 'P', "csh",ppstmt->ServerStatementID,0, "INSERT INTO test_table VALUES ($1, 'Prepared_Statement', 1 )" , 0);
-
 	//	/* Parse */
 	pktbuf_start_packet(buf, 'P');
 
 	///* Need to change the size */
 	for(int i=5;i<ppstmt->size;i++)
 	{
-		//slog_info(server,"%d, %d:::%c", i, ppstmt->realpacket[i],ppstmt->realpacket[i]);
 		pktbuf_put_char(buf,ppstmt->realpacket[i]);
 	}
 	pktbuf_finish_packet(buf);
 	server->ignore++ ;
-	//slog_info(server,"Prepared the Packet with lenght::%d", buf->buf_len);
-//
-	//print_contentS(server,buf->buf,buf->buf_len);
-//	print_contentS(server, buf->buf ,buf->buf_len);
-	
-//	pktbuf_write_generic(buf, 'S', "");
-	//slog_info(server,"Going to send the above packet with pos%x with %d" , server->sbuf.io , server->sbuf.pkt_remain);
-	//server->link->expect_rfq_count++;
-	//server->ignore = 1;
 	res = pktbuf_send_immediate(buf, server);
-	//slog_info(server,"After Going to send the above packet with pos%x" , server->sbuf.dst );
-
-	//slog_info(server,"After sending the above packet with pos%x with %d" , server->sbuf.io , server->sbuf.pkt_remain);
-	print_contentS(server,buf->buf,buf->buf_len);
-	
+	////print_contentS(server,buf->buf,buf->buf_len);	
 	pktbuf_free(buf);
 
 	sendD =1;
@@ -1021,7 +1010,6 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt)
 	temp->prepstmt = ppstmt;
 	temp->next = server->ServerPrepStmt;
 	server->ServerPrepStmt = temp;
-
 }
 
 struct prepStmtlist * removeNode(struct prepStmtlist *itr)
@@ -1077,14 +1065,14 @@ void verifyPrepStmt(PgSocket *server, const PktHdr const *pkt)
 		*/
 		if(matchServerPstmtID(server, pkt,itr->prepstmt))
 		{
-		//	slog_info(server, "Matched!!!!");
+			//slog_info(server, "Matched!!!!");
 			return;
 		}
 		
 	}
 
 	//Prepare the statement
-	slog_info(server->link,"Need to prepare the statment");
+	//slog_info(server->link,"Need to prepare the statment");
 
 	for(struct prepStmtlist *itr=server->link->ClientPrepStmt;itr!=NULL;itr=itr->next)
 	{	
@@ -1109,23 +1097,24 @@ void sendtypeD(PgSocket *server)
 	pktbuf_start_packet(buf, 'D');
 	pktbuf_put_char(buf,'P');
 	pktbuf_finish_packet(buf);
-	slog_info(server,"Constructed the packet Buffer for type D");
-	print_contentS(server,buf->buf,buf->buf_len);
+	//slog_info(server,"Constructed the packet Buffer for type D");
+	//print_contentS(server,buf->buf,buf->buf_len);
 	res = pktbuf_send_immediate(buf, server);
-	print_contentS(server,buf->buf,buf->buf_len);
+	//print_contentS(server,buf->buf,buf->buf_len);
 	pktbuf_free(buf);
 	
 }
 /* decide on packets of logged-in client */
 static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
+	print_content(client, pkt, "client");
 	if(( pkt->type == 'P' || pkt->type == 'B') )
 	{	
 		/* acquire server */
 		if (!find_server(client))
 			return false;
 		
-		slog_info(client,"From client::%x,to Server%x", client, client->link );
+		//slog_info(client,"From client::%x,to Server%x", client, client->link );
 
 		if(pkt->type=='P' && pkt->data.data[5] == 'S' )
 			register_pkt(client, pkt);

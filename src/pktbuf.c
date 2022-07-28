@@ -333,9 +333,9 @@ void pktbuf_write_generic(PktBuf *buf, int type, const char *pktdesc, ...)
 		case 'b':
 			bin = va_arg(ap, uint8_t *);
 			len = va_arg(ap, int);
-			slog_info(NULL, "Reached inside the case stateement and created the space");
+			//slog_info(NULL, "Reached inside the case stateement and created the space");
 			pktbuf_put_bytes(buf, bin, len);
-			slog_info(NULL,"Putted the bytes");
+			//slog_info(NULL,"Putted the bytes");
 			break;
 		default:
 			fatal("bad pktdesc: %s", pktdesc);

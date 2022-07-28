@@ -97,7 +97,7 @@ static bool handle_server_startup(PgSocket *server, PktHdr *pkt)
 		disconnect_server(server, true, "partial pkt in login phase");
 		return false;
 	}
-	///print_content(server,pkt,"server");
+	/////print_content(server,pkt,"server");
 	/* ignore most that happens during connect_query */
 	if (server->exec_on_connect) {
 		switch (pkt->type) {
@@ -246,7 +246,7 @@ int user_max_connections(PgUser *user)
 /* process packets on logged in connection */
 static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 {	
-	print_content(server,pkt,"Server");
+	//print_content(server,pkt,"Server");
 
 	bool ready = false;
 	bool idle_tx = false;
@@ -255,7 +255,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	PgSocket *client = server->link;
 	bool async_response = false;
 	
-	//print_content(server, pkt, "server");
+	////print_content(server, pkt, "server");
 	Assert(!server->pool->db->admin);
 	
 
@@ -308,7 +308,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	 */
 	case 'E':		/* ErrorResponse */
 		if (server->setting_vars) {
-			//print_content(server,pkt,"server");
+			////print_content(server,pkt,"server");
 			/*
 				Search for the 
 			/*
@@ -378,7 +378,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	 if(server->ignore >0  && pkt->type == '1')
 		{
 			server->ignore--;
-			slog_info(server, "Packet type 1 detected which is to be skipped!!!");
+			//slog_info(server, "Packet type 1 detected which is to be skipped!!!");
 			sbuf_prepare_skip(sbuf, pkt->len);
 			return true;
 		}
