@@ -83,7 +83,7 @@ int get_active_server_count(void)
 static void construct_client(void *obj)
 {
 	PgSocket *client = obj;
-	slog_info(client,"Constructor Called");
+//	slog_info(client,"Constructor Called");
 	memset(client, 0, sizeof(PgSocket));
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
