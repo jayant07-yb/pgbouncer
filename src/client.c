@@ -1094,10 +1094,14 @@ void verifyPrepStmt(PgSocket *server, const PktHdr const *pkt)
 
 }
 
+PktBuf *bindpkt ; 
 void sendBind(PgSocket *client, struct PktHdr *pkt)
 {
 	bool res;
-	PktBuf *buf = pktbuf_dynamic(512);
+	if(!bindpkt) 
+	 	bindpkt = pktbuf_dynamic(512);
+		
+	PktBuf *buf = bindpkt;
 
 	//	/* Bind */
 	pktbuf_start_packet(buf, 'B');
@@ -1123,7 +1127,7 @@ void sendBind(PgSocket *client, struct PktHdr *pkt)
 
 	res = pktbuf_send_immediate(buf, client->link);
 	////print_contentS(server,buf->buf,buf->buf_len);	
-	pktbuf_free(buf);
+	pktbuf_reset(buf);
 }
 
 /* decide on packets of logged-in client */
