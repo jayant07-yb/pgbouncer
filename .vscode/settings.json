@@ -3,6 +3,26 @@
         "__config": "c",
         "type_traits": "c",
         "exception": "c",
-        "limits": "c"
+        "limits": "c",
+        "typeinfo": "c",
+        "__hash_table": "c",
+        "__locale": "c",
+        "array": "c",
+        "functional": "c",
+        "filesystem": "c",
+        "iomanip": "c",
+        "ios": "c",
+        "iterator": "c",
+        "locale": "c",
+        "ostream": "c",
+        "sstream": "c",
+        "string": "c",
+        "string_view": "c",
+        "vector": "c",
+        "*.tcc": "c",
+        "bitset": "c",
+        "istream": "c",
+        "ratio": "c",
+        "streambuf": "c"
     }
 }

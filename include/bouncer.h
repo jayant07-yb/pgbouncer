@@ -389,6 +389,7 @@ struct prepStmt{
 	uint8_t *realpacket ; 
 	int size;
 
+	struct AANode tree_node;
 	//For Close Statements
 	char *closeStmt; 
 	int closeStmtSize;
@@ -405,6 +406,9 @@ struct prepStmtlist{
  * ->state corresponds to various lists the struct can be at.
  */
 struct PgSocket {
+	struct AATree stmt_tree;
+	bool init ;
+
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
 	PgPool *pool;		/* parent pool, if NULL not yet assigned */
@@ -474,9 +478,6 @@ struct PgSocket {
 	SBuf sbuf;		/* stream buffer, must be last */
 
 	uint16_t ClientID ;
-
-	struct prepStmtlist *ClientPrepStmt;	/* Prepared Statements required by the Client */
-	struct prepStmtlist *ServerPrepStmt; 	/* Prepared Statements active on the Server */
 
 	pthread_mutex_t lock;
 	bool ignoreStm;

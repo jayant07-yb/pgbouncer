@@ -876,9 +876,30 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 }
 
 /*
+AATREE for yb
+*/
+
+/* compare string with PgUser->name, for usage with btree */
+static int stmt_node_cmp(uintptr_t userptr, struct AANode *node)
+{
+	const char *name = (const char *)userptr;
+	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
+	return strcmp(name, user->ServerStatementID);
+}
+
+/* destroy PgUser, for usage with btree */
+static void stmt_node_release(struct AANode *node, void *arg)
+{
+	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
+	slab_free(user_cache, user);
+}
+
+
+
+/*
  * Yugabyte Changes 
  */
- bool sendD = 0;
+bool sendD = 0;
 const char mapp[] = {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3','4','5','6','7','8','9','_'};
 struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt){
 	struct prepStmt *result = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
@@ -897,7 +918,7 @@ struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt){
 		if(result->packet[j] <= 32)
 			result->packet[j] = ' ';	
 
-	result->ServerStatementID = (uint8_t *)malloc(sizeof(uint8_t)*pkt->data.data[4] + 2*sizeof(uint8_t)) ; //Change the size
+	result->ServerStatementID = (uint8_t *)malloc(sizeof(uint8_t)*pkt->data.data[4] + 3*sizeof(uint8_t)) ; //Change the size
 	
 	int tempID=client->ClientID ;
 	result->ServerStatementID[0] = mapp[tempID/(36*36)] ;
@@ -924,7 +945,7 @@ struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt){
 void  getClientID(PgSocket *client)
 {
 	//See if the value has not been initialized
-	if(!client->ClientPrepStmt)
+	if(!client->init)
 		{
 			//Get new ID
 			//Need to add some race conditions 
@@ -932,6 +953,8 @@ void  getClientID(PgSocket *client)
 				{client->pool->client_counter =0;
 				client->pool->PstmtEmpty = 0;}
 			client->ClientID = ++client->pool->client_counter;
+			client->init = 1;
+			aatree_init( &(client->stmt_tree), stmt_node_cmp ,stmt_node_release);
 		}
 }
 
@@ -942,24 +965,26 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 
 	getClientID(client);	//Make sure that an ID has been allocated to the client.
 
-	
-	struct prepStmt *psmt = getPrepStmt(client, pkt);
+	struct prepStmt *psmt1 = getPrepStmt(client, pkt);
+	struct prepStmt *psmt2 = getPrepStmt(client, pkt);
+
 	struct prepStmtlist *temp;
 	
 	/*	Add the preparedStatement to client list */
-	temp = (struct prepStmtlist *)malloc(sizeof(struct prepStmtlist)) ;
-	temp->prepstmt = psmt;
-	temp->next = client->ClientPrepStmt;
-	client->ClientPrepStmt = temp;
-	
-	/*	Add the preparedStatement to Server list */
-	temp = (struct prepStmtlist *)malloc(sizeof(struct prepStmtlist)) ;
-	temp->prepstmt = psmt;
-	temp->next = client->link->ServerPrepStmt;
-	client->link->ServerPrepStmt = temp;
 
+
+	aatree_insert(&(client->stmt_tree), (uintptr_t)psmt1->ServerStatementID, &psmt1->tree_node);
+
+	/*	Add the preparedStatement to Server list */
+	if(!(client->link->init))
+	{
+		aatree_init( &(client->link->stmt_tree), stmt_node_cmp ,stmt_node_release);
+		client->link->init = 1;
+	}
+	
+	aatree_insert(&(client->link->stmt_tree), (uintptr_t)psmt2->ServerStatementID, &psmt2->tree_node);
 	/* Prepare the new Packet */
-	makeready(client->link,psmt,0);
+	makeready(client->link,psmt2,0);
 
 }
 
@@ -985,6 +1010,7 @@ bool matchServerPstmtID(PgSocket *server, int ClientID, PktHdr *pkt, struct prep
 	return true;
 }
 
+//Call it with the server list 
 void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 {	
 	
@@ -1019,11 +1045,14 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 
 	sendD =1;
 	/*	Add the preparedStatement to Server list */
-	struct prepStmtlist *temp;
-	temp = (struct prepStmtlist *)malloc(sizeof(struct prepStmtlist)) ;
-	temp->prepstmt = ppstmt;
-	temp->next = server->ServerPrepStmt;
-	server->ServerPrepStmt = temp;
+	/*	Add the preparedStatement to Server list */
+	if(!(server->init))
+	{
+		aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
+		server->link->init = 1;
+	}
+	aatree_insert(&(server->stmt_tree), (uintptr_t)ppstmt->ServerStatementID, &ppstmt->tree_node);
+
 }
 
 struct prepStmtlist * removeNode(struct prepStmtlist *itr)
@@ -1059,38 +1088,58 @@ struct prepStmtlist * removeNode(struct prepStmtlist *itr)
 void ClosePPSTMT(PgSocket *server, struct prepStmt *ppstmt )
 {}
 
-void verifyPrepStmt(PgSocket *server, const PktHdr const *pkt)
+char *getIDbind(int tempID, const PktHdr const *pkt)
+{
+
+	char *result = (char *)malloc(sizeof(char)*(100)) ;//Change it
+
+	slog_info(NULL, "Inside the gertID1");
+	slog_info(NULL,tempID);
+	result[0] = mapp[tempID/(36*36)] ;
+	tempID %= 36*36 ;
+	slog_info(NULL, "Inside the gertID2");
+
+
+	result[1] = mapp[tempID/(36)] ;
+	tempID %= 36 ; 
+	result[2] = mapp[tempID] ;
+	
+	slog_info(NULL, "Inside the gertID");
+	for(int itr=6;pkt->data.data[itr] > 32 ;itr++)
+	result[itr-6+3] = pkt->data.data[itr] ; //	Change the initial point of copying for serverstmtID here
+
+	return result ; 
+
+}
+
+void verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 {
 	//The pkt has been modified with the right name
 	//We need to search that is it is the server->ServerPrep
 	if(!pkt->data.data[6])
 		return ;
-		
-	for(struct prepStmtlist *itr=server->ServerPrepStmt;itr!=NULL;itr=itr->next)
-	{	
-
-		if(matchServerPstmtID(server, server->link->ClientID, pkt,itr->prepstmt))
-		{
-			return;
-		}
-		
-	}
+	slog_info(NULL, "Here getting error");
+	char *name = getIDbind(pkt, server->link->ClientID);
+	slog_info(NULL, "Here getting error2");
+	
+	if(!!aatree_search(&server->stmt_tree, (uintptr_t)name))
+		return ;
 
 	//Prepare the statement
 	//slog_info(server->link,"Need to prepare the statment");
+	struct AANode *node;
+	node = aatree_search(&server->link->stmt_tree, (uintptr_t)name);
+	struct prepStmt* ClientCopy = node ? container_of(node, struct prepStmt , tree_node) : NULL;
+	if(ClientCopy == NULL) 
+		return ;
+	
+	struct prepStmt* ServerCopy;
+	*ServerCopy = *ClientCopy; 
+	//Might be error here
 
-	for(struct prepStmtlist *itr=server->link->ClientPrepStmt;itr!=NULL;itr=itr->next)
-	{	
-		//slog_info(server,"Matching!!....");
-		if(matchServerPstmtID(server, server->link->ClientID, pkt,itr->prepstmt))
-			{
-		//		slog_info(server,"The statements for preparing are \n%s \n %s",pkt->data.data , itr->prepstmt->packet );
-				makeready(server,itr->prepstmt,1);
-				break;
-			}
-		
-		}
-
+	aatree_insert(&server->stmt_tree, (uintptr_t)name, &ServerCopy->tree_node);
+	makeready(server,ServerCopy,1);
+	
 
 }
 
@@ -1136,6 +1185,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	//print_content(client, pkt, "client");
 	if(( pkt->type == 'P' || pkt->type == 'B') )
 	{	
+
 		/* acquire server */
 		if (!find_server(client))
 			return false;
