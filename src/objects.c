@@ -80,6 +80,22 @@ int get_active_server_count(void)
 	return slab_active_count(server_cache);
 }
 
+/* compare string with PgUser->name, for usage with btree */
+static int stmt_node_cmp(uintptr_t userptr, struct AANode *node)
+{
+	const char *name = (const char *)userptr;
+	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
+	return strcmp(name, user->ServerStatementID);
+}
+
+/* destroy PgUser, for usage with btree */
+static void stmt_node_release(struct AANode *node, void *arg)
+{
+	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
+	slab_free(user_cache, user);
+}
+
+
 static void construct_client(void *obj)
 {
 	PgSocket *client = obj;
@@ -88,6 +104,8 @@ static void construct_client(void *obj)
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
 	client->state = CL_FREE;
+	client->ClientID = 0;
+	aatree_init( &(client->stmt_tree), stmt_node_cmp ,stmt_node_release);
 }
 
 static void construct_server(void *obj)
@@ -98,6 +116,9 @@ static void construct_server(void *obj)
 	list_init(&server->head);
 	sbuf_init(&server->sbuf, server_proto);
 	server->state = SV_FREE;
+	// Tree
+	aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
+	
 }
 
 /* compare string with PgUser->name, for usage with btree */
@@ -504,7 +525,9 @@ static PgPool *new_pool(PgDatabase *db, PgUser *user)
 
 	pool->user = user;
 	pool->db = db;
-
+	
+	pool->client_counter = 0;//Reset the value here
+	
 	statlist_init(&pool->active_client_list, "active_client_list");
 	statlist_init(&pool->waiting_client_list, "waiting_client_list");
 	statlist_init(&pool->active_server_list, "active_server_list");

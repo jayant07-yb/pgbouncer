@@ -372,7 +372,13 @@ bool set_pool(PgSocket *client, const char *dbname, const char *username, const 
 		}
 	}
 
-	return finish_set_pool(client, takeover);
+	if(finish_set_pool(client,takeover))
+		{
+			
+			client->ClientID = ++(client->pool->client_counter );
+			return true;
+		}
+	return false ;
 }
 
 bool handle_auth_query_response(PgSocket *client, PktHdr *pkt) {
@@ -876,27 +882,6 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 }
 
 /*
-AATREE for yb
-*/
-
-/* compare string with PgUser->name, for usage with btree */
-static int stmt_node_cmp(uintptr_t userptr, struct AANode *node)
-{
-	const char *name = (const char *)userptr;
-	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
-	return strcmp(name, user->ServerStatementID);
-}
-
-/* destroy PgUser, for usage with btree */
-static void stmt_node_release(struct AANode *node, void *arg)
-{
-	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
-	slab_free(user_cache, user);
-}
-
-
-
-/*
  * Yugabyte Changes 
  */
 bool sendD = 0;
@@ -941,29 +926,11 @@ struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt){
 	return result ; 
 }
 
-// Makes the Client ID ready
-void  getClientID(PgSocket *client)
-{
-	//See if the value has not been initialized
-	if(!client->init)
-		{
-			//Get new ID
-			//Need to add some race conditions 
-			if(client->pool->PstmtEmpty)
-				{client->pool->client_counter =0;
-				client->pool->PstmtEmpty = 0;}
-			client->ClientID = ++client->pool->client_counter;
-			client->init = 1;
-			aatree_init( &(client->stmt_tree), stmt_node_cmp ,stmt_node_release);
-		}
-}
 
 void register_pkt(PgSocket *client, PktHdr *pkt)
 {
 	if (pkt->data.data[5]==NULL)		
 		return; 						//We wont be saving the unnamed statement.
-
-	getClientID(client);	//Make sure that an ID has been allocated to the client.
 
 	struct prepStmt *psmt1 = getPrepStmt(client, pkt);
 	struct prepStmt *psmt2 = getPrepStmt(client, pkt);
@@ -978,7 +945,6 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 	/*	Add the preparedStatement to Server list */
 	if(!(client->link->init))
 	{
-		aatree_init( &(client->link->stmt_tree), stmt_node_cmp ,stmt_node_release);
 		client->link->init = 1;
 	}
 	
@@ -1045,66 +1011,22 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 
 	sendD =1;
 	/*	Add the preparedStatement to Server list */
-	/*	Add the preparedStatement to Server list */
-	if(!(server->init))
-	{
-		aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
-		server->link->init = 1;
-	}
+
 	aatree_insert(&(server->stmt_tree), (uintptr_t)ppstmt->ServerStatementID, &ppstmt->tree_node);
 
 }
 
-struct prepStmtlist * removeNode(struct prepStmtlist *itr)
-{
-	/*
-	struct prepStmtlist{
-	struct prepStmtlist *next, *prev ; //For iterating
-	struct prepStmt *prepstmt;
-	};
-	*/
-	//The prepstmt is already NULL so no need to remove it
-	//We have to return the *next;
-	//Need to add the mutex lock
-	if(itr->next != NULL )
-	{
-		itr->next->prev  = itr->prev;
-	}
-
-	//Need to add the mutex lock
-	if(itr->prev != NULL )
-	{
-		itr->prev->next  = itr->next;
-	}
-
-	struct prepStmtlist *next = itr->next ; //Location copied
-	free(itr->next);
-	free(itr->prev);
-	free(itr);
-	return next;
-
-}
-
-void ClosePPSTMT(PgSocket *server, struct prepStmt *ppstmt )
-{}
-
 char *getIDbind(int tempID, const PktHdr const *pkt)
 {
 
-	char *result = (char *)malloc(sizeof(char)*(100)) ;//Change it
-
-	slog_info(NULL, "Inside the gertID1");
-	slog_info(NULL,tempID);
+	char *result = (char *)malloc(sizeof(char)*(pkt->len)) ;//Change it
+	
 	result[0] = mapp[tempID/(36*36)] ;
-	tempID %= 36*36 ;
-	slog_info(NULL, "Inside the gertID2");
-
-
+	tempID %= 36 ; 
 	result[1] = mapp[tempID/(36)] ;
 	tempID %= 36 ; 
 	result[2] = mapp[tempID] ;
-	
-	slog_info(NULL, "Inside the gertID");
+
 	for(int itr=6;pkt->data.data[itr] > 32 ;itr++)
 	result[itr-6+3] = pkt->data.data[itr] ; //	Change the initial point of copying for serverstmtID here
 
@@ -1116,11 +1038,10 @@ void verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 {
 	//The pkt has been modified with the right name
 	//We need to search that is it is the server->ServerPrep
-	if(!pkt->data.data[6])
+	if(pkt->data.data[6] <  32)
 		return ;
-	slog_info(NULL, "Here getting error");
-	char *name = getIDbind(pkt, server->link->ClientID);
-	slog_info(NULL, "Here getting error2");
+	
+	char *name = getIDbind(server->link->ClientID, pkt);
 	
 	if(!!aatree_search(&server->stmt_tree, (uintptr_t)name))
 		return ;
@@ -1191,7 +1112,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 			return false;
 		
 		//slog_info(client,"From client::%x,to Server%x", client, client->link );
-
 		if(pkt->type=='P' && pkt->data.data[5] > 32 )
 			register_pkt(client, pkt);
 		else if(pkt->type=='B' && pkt->data.data[6] > 32)

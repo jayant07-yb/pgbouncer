@@ -291,7 +291,7 @@ struct PgPool {
 	int16_t rrcounter;		/* round-robin counter */
 
 	uint16_t client_counter ; /*Will be modified */
-	bool PstmtEmpty:1 ;
+
 
 	/*
 	1.	Any prepared Statement will be mapped from the 
