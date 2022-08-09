@@ -384,10 +384,10 @@ struct PgDatabase {
 
 
 struct prepStmt{
-	char *packet; //The exact statement that is present;
 	char *ServerStatementID; //The statement ID for matching purposes
 	uint8_t *realpacket ; 
 	int size;
+	int sizeID;
 
 	struct AANode tree_node;
 	//For Close Statements

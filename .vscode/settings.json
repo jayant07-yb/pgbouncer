@@ -23,6 +23,23 @@
         "bitset": "c",
         "istream": "c",
         "ratio": "c",
-        "streambuf": "c"
+        "streambuf": "c",
+        "__split_buffer": "c",
+        "algorithm": "c",
+        "cstdio": "c",
+        "cstdlib": "c",
+        "deque": "c",
+        "memory_resource": "c",
+        "initializer_list": "c",
+        "memory": "c",
+        "new": "c",
+        "queue": "c",
+        "random": "c",
+        "stack": "c",
+        "unordered_map": "c",
+        "utility": "c",
+        "fstream": "c",
+        "stdexcept": "c",
+        "tuple": "c"
     }
 }
