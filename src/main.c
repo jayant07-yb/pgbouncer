@@ -859,6 +859,16 @@ static void cleanup(void)
 	xfree((char **)&cf_syslog_facility);
 }
 
+PgDatabase *yugabytedb ; 
+PgUser *superuser ; 
+PgPool *superpool;
+void yb_pool()
+{
+	//yugabytedb = add_database("yugabyte");
+	//superuser = add_user("yugabyte" , "yugabyte");
+	//superpool =  
+}
+
 /* boot everything */
 int main(int argc, char *argv[])
 {
@@ -1011,6 +1021,7 @@ int main(int argc, char *argv[])
 
 	sd_notify(0, "READY=1");
 	
+	yb_pool();
 	/* main loop */
 	while (cf_shutdown < 2)
 		main_loop_once();
