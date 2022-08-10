@@ -938,8 +938,6 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 	
 	aatree_insert(&(client->link->stmt_tree), (uintptr_t)psmt2->ServerStatementID, &psmt2->tree_node);
 
-	slog_info(client->link,"registered");
-	slog_info(client->link,psmt2->ServerStatementID);
 	/* Prepare the new Packet */
 	makeready(client->link,psmt2,0);
 
@@ -970,7 +968,6 @@ bool matchServerPstmtID(PgSocket *server, int ClientID, PktHdr *pkt, struct prep
 //Call it with the server list 
 void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 {	
-	slog_info(NULL, "Make ready called");
 	bool res;
 	PktBuf *buf = pktbuf_dynamic(512);
 
@@ -995,7 +992,7 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 	if(serverIgnore)
 		server->ignore++ ;
 	res = pktbuf_send_immediate(buf, server);
-	print_contentS(server,buf->buf,buf->buf_len);	
+	//print_contentS(server,buf->buf,buf->buf_len);	
 	pktbuf_free(buf);
 
 	sendD =1;
@@ -1045,7 +1042,6 @@ void verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 		return ;
 	assert(pkt->type == 'B');
 
-	print_content(server->link, pkt,"SERVER");
 	char *name = stmtname(server->link->ClientID , pkt->data.data , 6) ; 
 
 	if(aatree_search(&server->stmt_tree, (uintptr_t)name))
@@ -1058,7 +1054,7 @@ void verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 	struct prepStmt* ClientCopy = node ? container_of(node, struct prepStmt , tree_node) : NULL;
 	if(ClientCopy == NULL) 
 	{
-		slog_info(NULL, "Not found");
+		//slog_info(NULL, "Not found");
 		return ;
 	}
 
@@ -1077,7 +1073,6 @@ void verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 PktBuf *bindpkt ; 
 void sendBind(PgSocket *client, struct PktHdr *pkt)
 {
-	slog_info(NULL, "SEND BIND CALLED");
 	bool res;
 	if(!bindpkt) 
 	 	bindpkt = pktbuf_dynamic(512);
@@ -1109,7 +1104,6 @@ void sendBind(PgSocket *client, struct PktHdr *pkt)
 	res = pktbuf_send_immediate(buf, client->link);
 	//print_contentS(client->link,buf->buf,buf->buf_len);	
 	pktbuf_reset(buf);
-	slog_info(NULL, "END");
 }
 
 /* decide on packets of logged-in client */
