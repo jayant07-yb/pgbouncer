@@ -65,7 +65,7 @@ void pktbuf_put_uint64(PktBuf *buf, uint64_t val);
 void pktbuf_put_string(PktBuf *buf, const char *str);
 void pktbuf_put_bytes(PktBuf *buf, const void *data, int len);
 void pktbuf_finish_packet(PktBuf *buf);
-#define pktbuf_written(buf) ((buf)->write_pos)
+#define pktbuf_written(buf) ((buf)->write_-pos)
 
 
 /*

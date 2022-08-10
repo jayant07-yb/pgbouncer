@@ -859,14 +859,13 @@ static void cleanup(void)
 	xfree((char **)&cf_syslog_facility);
 }
 
-PgDatabase *yugabytedb ; 
-PgUser *superuser ; 
-PgPool *superpool;
+
 void yb_pool()
 {
-	//yugabytedb = add_database("yugabyte");
-	//superuser = add_user("yugabyte" , "yugabyte");
-	//superpool =  
+	yugabytedb = add_database("yugabyte");//IT will be changed to yugabyte , 
+	slog_info(NULL, "Got database");
+	superuser = add_user("yugabyte" , "yugabyte");
+	superpool = get_pool(yugabytedb,superuser);  
 }
 
 /* boot everything */
