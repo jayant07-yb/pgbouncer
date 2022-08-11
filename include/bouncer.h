@@ -408,7 +408,7 @@ struct prepStmtlist{
 struct PgSocket {
 	struct AATree stmt_tree;
 	bool init ;
-
+	bool ignoretillZ;
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
 	PgPool *pool;		/* parent pool, if NULL not yet assigned */

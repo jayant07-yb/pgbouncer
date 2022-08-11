@@ -118,7 +118,7 @@ static void construct_server(void *obj)
 	server->state = SV_FREE;
 	// Tree
 	aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
-	
+	server->ignoretillZ = 0;
 }
 
 /* compare string with PgUser->name, for usage with btree */
@@ -678,6 +678,7 @@ bool find_server(PgSocket *client)
 	}
 	Assert(!server || server->state == SV_IDLE);
 
+
 	/* send var changes */
 	if (server) {
 		res = varcache_apply(server, client, &varchange);
@@ -685,7 +686,17 @@ bool find_server(PgSocket *client)
 			disconnect_server(server, true, "var change failed");
 			server = NULL;
 		}
+		if (res) {
+		//SEND_generic(res, server, 'Q', "s", "set role 'postgres';");
+		//server->ignoretillZ++;
+		//client->expect_rfq_count++;
+		}
 	}
+
+
+	
+
+
 
 	/* link or send to waiters list */
 	if (server) {
@@ -705,6 +716,9 @@ bool find_server(PgSocket *client)
 		pause_client(client);
 		res = false;
 	}
+		/* Change the user */
+
+
 	return res;
 }
 
