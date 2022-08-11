@@ -862,9 +862,8 @@ static void cleanup(void)
 
 void yb_pool()
 {
-	yugabytedb = add_database("yugabyte");//IT will be changed to yugabyte , 
-	slog_info(NULL, "Got database");
-	superuser = add_user("yugabyte" , "yugabyte");
+	yugabytedb = add_database("yugabyte");				//It will be by default 
+	superuser = add_user("yugabyte" , "yugabyte");		//Super user parameters will be provided
 	superpool = get_pool(yugabytedb,superuser);  
 }
 

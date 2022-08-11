@@ -408,11 +408,11 @@ struct prepStmtlist{
 struct PgSocket {
 	struct AATree stmt_tree;
 	bool init ;
-	bool ignoretillZ;
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
 	PgPool *pool;		/* parent pool, if NULL not yet assigned */
-
+	char *pool_user ; 	/* Since the user will be changed at the time of 
+						the assigning of pool the pool_user must be saved somewhere */
 	PgUser *login_user;	/* presented login, for client it may differ from pool->user */
 
 	int client_auth_type;	/* auth method decided by hba */
@@ -482,7 +482,6 @@ struct PgSocket {
 	pthread_mutex_t lock;
 	bool ignoreStm;
 	uint8_t ignore;
-	//bool count;
 };
 
 #define RAW_IOBUF_SIZE	offsetof(IOBuf, buf)

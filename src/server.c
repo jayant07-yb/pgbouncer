@@ -246,8 +246,6 @@ int user_max_connections(PgUser *user)
 /* process packets on logged in connection */
 static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 {	
-	print_content(server,pkt,"Server");
-
 	bool ready = false;
 	bool idle_tx = false;
 	char state;
@@ -255,10 +253,8 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	PgSocket *client = server->link;
 	bool async_response = false;
 	
-	////print_content(server, pkt, "server");
 	Assert(!server->pool->db->admin);
 	
-
 	switch (pkt->type) {
 	default:
 		slog_error(server, "unknown pkt: '%c'", pkt_desc(pkt));
@@ -374,13 +370,6 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	server->idle_tx = idle_tx;
 	server->ready = ready;
 	server->pool->stats.server_bytes += pkt->len;
-	/*if(server->ignoretillZ > 0 )
-	{
-		if(pkt->type == 'Z')
-			server->ignoretillZ-- ; 
-		sbuf_prepare_skip(sbuf,pkt->len);
-		return true;
-	}*/
 	
 	 if(server->ignore >0  && pkt->type == '1')
 		{

@@ -114,6 +114,27 @@ static int apply_var(PktBuf *pkt, const char *key,
 	}
 }
 
+
+static int apply_role_change(PktBuf *pkt, const char* newuser)
+{
+	char buf[128];
+	char qbuf[128];
+	unsigned len;
+
+
+	/* add SET statement to packet */
+	len = snprintf(buf, sizeof(buf), "SET %s=%s;", "role", newuser);
+	if (len < sizeof(buf)) {
+		pktbuf_put_bytes(pkt, buf, len);
+		slog_info(NULL, "Changing the role");
+		return 1;
+	} else {
+		log_warning("got too long value, skipping");
+		return 0;
+	}
+}
+
+
 bool varcache_apply(PgSocket *server, PgSocket *client, bool *changes_p)
 {
 	int changes = 0;
@@ -131,8 +152,11 @@ bool varcache_apply(PgSocket *server, PgSocket *client, bool *changes_p)
 		sval = get_value(&server->vars, lk);
 		cval = get_value(&client->vars, lk);
 		changes += apply_var(pkt, lk->name, cval, sval);
-	}
+	}	
+	changes += apply_role_change(pkt,client->pool_user);	//Change the user 
+
 	*changes_p = changes > 0;
+
 	if (!changes)
 		return true;
 

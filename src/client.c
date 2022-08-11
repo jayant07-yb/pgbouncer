@@ -205,6 +205,10 @@ static bool finish_set_pool(PgSocket *client, bool takeover)
 			pool_user = client->login_user;
 
 		//client->pool = get_pool(client->db, pool_user); (Changing)
+		/*	Allocate the pool user and add the socket to the super pool */
+		client->pool_user = (char *)malloc( (1+ strlen(pool_user->name))*sizeof(char));
+		strcpy(client->pool_user,pool_user->name);	
+		
 		client->pool = get_pool(yugabytedb , superuser);
 		if (!client->pool) {
 			disconnect_client(client, true, "no memory for pool");
