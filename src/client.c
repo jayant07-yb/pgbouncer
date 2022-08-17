@@ -895,8 +895,9 @@ char* stmtname(int tempID, const char* data , int startpoint)
 {
 	
 	int len =0;
-	for(;len < data[len+startpoint] > 32 ;len++ );//Starting from 5
-	char *ServerStatementID =(char *)malloc(sizeof(char)*(len+2+ 3)) ;//Change it //Change the size
+	for(;len < data[len+startpoint] > 32 ;len++ ) ;
+
+	char *ServerStatementID =(char *)malloc(sizeof(char)*(len+2+ 3)) ; //Change the size
 	for(int i=0;i<len+5 ;i++ )
 	ServerStatementID[i] =0;
 
@@ -906,9 +907,14 @@ char* stmtname(int tempID, const char* data , int startpoint)
 	tempID %= 36 ; 
 	ServerStatementID[2] = mapp[tempID] ;
 	
-	for(int itr=5;data[itr-1] > 32 ;itr++)
-	ServerStatementID[itr-startpoint+3] = data[itr] ; //	Change the initial point of copying for serverstmtID here
+	/*
+	ServerStatementID[3+itr] =  data[startpoint+itr] ; 
+	*/
 
+	for(int itr=0; data[startpoint + itr] > 32 ;itr++)
+	{
+		ServerStatementID[3+itr] =  data[startpoint+itr] ; 
+	}
 	return  ServerStatementID ;
 }
 
@@ -918,7 +924,6 @@ struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt){
 	result->ServerStatementID = stmtname(client->ClientID , pkt->data.data , 5) ; 
 	result->size = pkt->len ; 
 	result->realpacket = (uint8_t *)malloc(sizeof(uint8_t )*pkt->len);
-	//slog_info(NULL,"Registering %s",result->ServerStatementID);
 	for(int i=0;i<pkt->len;i++)
 	{
 		result->realpacket[i] = pkt->data.data[i];
@@ -1066,8 +1071,6 @@ void verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 	
 	struct prepStmt* ServerCopy = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
 	copyValues(ServerCopy, ClientCopy);
-
-	//Might be error here
 
 	aatree_insert(&server->stmt_tree, (uintptr_t)name, &ServerCopy->tree_node);
 	makeready(server,ServerCopy,1);
