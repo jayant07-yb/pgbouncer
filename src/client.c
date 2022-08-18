@@ -888,7 +888,6 @@ bool sendD = 0;
 const char mapp[] = {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3','4','5','6','7','8','9','_'};
 char* stmtname(int tempID, const char* data , int startpoint)
 {
-	
 	int len =0;
 	for(;len < data[len+startpoint] > 32 ;len++ ) ;
 
@@ -910,10 +909,11 @@ char* stmtname(int tempID, const char* data , int startpoint)
 	return  ServerStatementID ;
 }
 
-struct prepStmt* getPrepStmt(PgSocket *client, const PktHdr *pkt){
+struct prepStmt* getPrepStmt(const PgSocket *client, const PktHdr *pkt){
 	struct prepStmt *result = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
 
 	result->ServerStatementID = stmtname(client->ClientID , pkt->data.data , 5) ; 
+	slog_info(client->link, "Name :: %s", result->ServerStatementID);
 	result->size = pkt->len ; 
 	result->realpacket = (uint8_t *)malloc(sizeof(uint8_t )*pkt->len);
 	for(int i=0;i<pkt->len;i++)
@@ -929,8 +929,11 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 	if (pkt->data.data[5]==NULL)		
 		return; 						//We wont be saving the unnamed statement.
 
-	struct prepStmt *psmt1 = getPrepStmt(client, pkt);
-	struct prepStmt *psmt2 = getPrepStmt(client, pkt);
+	struct prepStmt *psmt1 , *psmt2 ; 
+
+	psmt1 = getPrepStmt(client, pkt);
+	psmt2 = getPrepStmt(client, pkt);
+	copyValues(psmt1, psmt2);
 
 	struct prepStmtlist *temp;
 	
@@ -943,7 +946,7 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 	slog_info(client->link,"Preparing %s also %s ", psmt2->ServerStatementID , psmt1->ServerStatementID);
 
 	/* Prepare the new Packet */
-	makeready(client->link,psmt2,0);
+	makeready(client->link,psmt2,0);	//change it to 0
 
 }
 
@@ -976,8 +979,13 @@ void addNode(PgSocket *server, int val)
 	if(server->pushNode != NULL )
 		server->pushNode->next = node  ;
 	server->pushNode = node ; 
+
 	if(server->popNode == NULL)
+	{
 		server->popNode = server->pushNode  ; 
+		slog_info(NULL, "Node added");
+	}
+	
 	server->pushNode->stmtId = val ; 
 }
 //Call it with the server list 
@@ -1003,17 +1011,21 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 
 	pktbuf_finish_packet(buf);
 	
-	server->ignore++ ;
 
-	if(serverIgnore)
-	{	addNode(server,server->ignore);
-		slog_info(NULL,"Adding it to the ignore list %d" , server->ignore);
-	}else 
-	{
-		slog_info(NULL, "Not entring the value");
-	}
 
 	res = pktbuf_send_immediate(buf, server);
+	
+
+	if(serverIgnore)
+	{	addNode(server,server->ignoreAssign);
+		slog_info(server,"Adding it to the ignore list %d" , server->ignoreAssign);
+	}else 
+	{
+		slog_info(server, "Not entring the value");
+	}
+	
+	//server->ignoreAssign++; //change it
+
 	print_contentS(server,buf->buf,buf->buf_len);	
 	pktbuf_free(buf);
 }
@@ -1114,15 +1126,7 @@ void sendBind(PgSocket *client, struct PktHdr *pkt , int startingpoint)
 		pktbuf_put_char(buf,pkt->data.data[i]);
 	}
 	pktbuf_finish_packet(buf);
-	
-	print_content(client->link, pkt, "Make");
-	print_contentS(client->link,pkt->data.data,pkt->len);
-	print_contentS(client->link,buf->buf,buf->buf_len);	
-	
-	//for(int i=0;i<pkt->len ;i++)
-	//	slog_info(NULL,"Matching %d :: %d also  %c :: %c  " , pkt->data.data[i] , buf->buf[i]  , pkt->data.data[i] , buf->buf[i] );
 
-	slog_info(NULL, "Value of  %d with starting point %d" , buf->buf[5] , startingpoint);
 	res = pktbuf_send_immediate(buf, client->link);
 	
 	pktbuf_reset(buf);
@@ -1138,11 +1142,14 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 		if (!find_server(client))
 			return false;
 		
+		if(pkt->type == 'P')
+			client->link->ignoreAssign++;
+		
 		if(pkt->type=='P' && pkt->data.data[5] > 32 )
 			register_pkt(client, pkt);
-		else if(pkt->type=='B')
+		/*else if(pkt->type=='B')
 			verifyPrepStmt(client->link,pkt);	
-
+*/
 	} 
 
 	SBuf *sbuf = &client->sbuf;
@@ -1230,10 +1237,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	/* tag the server as dirty */
 	client->link->ready = false;
 	client->link->idle_tx = false;
-	
-	//print_content(client, pkt, "client");
 
-	
 	/* forward the packet */
 	if(pkt->type == 'B' )
 	{	int startppt = startingPointBindPkt(pkt);
@@ -1244,10 +1248,12 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 			return true ;
 		}
 	}
-	else if(pkt->type=='P' && pkt->data.data[5] > 32 )
+
+	if(pkt->type=='P' && pkt->data.data[5] > 32 )
 	{	sbuf_prepare_skip(sbuf, pkt->len);
 		return true ; 
 	}
+*
 
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
 

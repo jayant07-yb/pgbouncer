@@ -490,7 +490,8 @@ struct PgSocket {
 
 	pthread_mutex_t lock;
 	bool ignoreStm;
-	uint8_t ignore;
+	uint8_t ignoreAssign;
+	uint8_t ignoreRemove;
 	//bool count;
 };
 

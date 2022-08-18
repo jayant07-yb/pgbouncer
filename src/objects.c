@@ -118,7 +118,9 @@ static void construct_server(void *obj)
 	server->state = SV_FREE;
 	// Tree
 	aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
-	
+	server->ignoreAssign = 0 ;
+	server->ignoreRemove = 0;
+	server->popNode = NULL ;
 }
 
 /* compare string with PgUser->name, for usage with btree */
@@ -1902,7 +1904,7 @@ void print_content(PgSocket *server, PktHdr *pkt , char desc[8])
 
 /* Print the contents of a packet */
 void print_contentS(PgSocket *server, uint8_t *arr , int size)
-{
+{	
 	char output[size+1];
 
 	for(int itr=0;itr< size;itr++)
