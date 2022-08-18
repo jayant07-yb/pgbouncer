@@ -412,6 +412,7 @@ struct QueueNode {
  * ->state corresponds to various lists the struct can be at.
  */
 struct PgSocket {
+	char* ignoreStmtName ;
 	struct AATree stmt_tree;
 	bool init ;
 	struct QueueNode *popNode;
