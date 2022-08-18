@@ -940,7 +940,7 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 	
 	aatree_insert(&(client->link->stmt_tree), (uintptr_t)psmt2->ServerStatementID, &psmt2->tree_node);
 	
-	slog_info(client->link,"Preparing %s", psmt2->ServerStatementID);
+	slog_info(client->link,"Preparing %s also %s ", psmt2->ServerStatementID , psmt1->ServerStatementID);
 
 	/* Prepare the new Packet */
 	makeready(client->link,psmt2,0);
@@ -1024,8 +1024,9 @@ void copyValues(struct prepStmt *dest,  struct prepStmt *src)
 	(dest->size) = src->size ;
 	int stmtlen = strlen(src->ServerStatementID) ;
 	dest->ServerStatementID = (char * )malloc(sizeof(char) * (1+stmtlen));
-	for(int i=0; i< stmtlen; i++ )
-	dest->ServerStatementID[i] = src->ServerStatementID[i];
+
+	for(int i =0; i < stmtlen ;i++)
+		dest->ServerStatementID[i] = src->ServerStatementID[i] ;		//This is the only way of copying 
 
 	dest->realpacket = (char * )malloc(sizeof(char)*(dest->size));
 	for(int i=0 ;i<dest->size ;i++)
@@ -1052,7 +1053,7 @@ void verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 	
 	int prepstmtnamestart  = startingPointBindPkt(pkt);
 	//We need to search that is it is the server->ServerPrep
-	if( pkt->data.data[prepstmtnamestart] <  32)
+	if( pkt->data.data[prepstmtnamestart]==0)
 		return ;
 
 	assert(pkt->type == 'B');
@@ -1094,9 +1095,12 @@ void sendBind(PgSocket *client, struct PktHdr *pkt , int startingpoint)
 	
 	///* Need to change the size */
 	//5th index is the portal name
-	for(int i=5  ;i<startingpoint;i++)
-	pktbuf_put_char(buf,pkt->data.data[i]);
-
+	for(int i=5  ;i<startingpoint;i++)	//we need to put the 0 char also
+	{
+		pktbuf_put_char(buf,pkt->data.data[i]);
+		//slog_info(client->link, "Inserting portal%d :: %d i.e. %c",i, pkt->data.data[i] , pkt->data.data[i] );
+	}
+	
 	//Client ID
 	int tempID=client->ClientID ;
 	pktbuf_put_char(buf,mapp[tempID/(36*36)]);
@@ -1112,9 +1116,15 @@ void sendBind(PgSocket *client, struct PktHdr *pkt , int startingpoint)
 	pktbuf_finish_packet(buf);
 	
 	print_content(client->link, pkt, "Make");
-	res = pktbuf_send_immediate(buf, client->link);
 	print_contentS(client->link,pkt->data.data,pkt->len);
 	print_contentS(client->link,buf->buf,buf->buf_len);	
+	
+	//for(int i=0;i<pkt->len ;i++)
+	//	slog_info(NULL,"Matching %d :: %d also  %c :: %c  " , pkt->data.data[i] , buf->buf[i]  , pkt->data.data[i] , buf->buf[i] );
+
+	slog_info(NULL, "Value of  %d with starting point %d" , buf->buf[5] , startingpoint);
+	res = pktbuf_send_immediate(buf, client->link);
+	
 	pktbuf_reset(buf);
 }
 
@@ -1227,7 +1237,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	/* forward the packet */
 	if(pkt->type == 'B' )
 	{	int startppt = startingPointBindPkt(pkt);
-		if(pkt->data.data[startppt] > 32)
+		if(pkt->data.data[startppt]  != 0)
 		{
 			sendBind(client,pkt,startppt);
 			sbuf_prepare_skip(sbuf, pkt->len);
