@@ -243,10 +243,17 @@ int user_max_connections(PgUser *user)
 	}
 }
 
+void popNode(PgSocket* server)
+{
+	struct 	QueueNode *node = server->popNode ; 
+	server->popNode =  node->next ;
+	free(node); 
+}
+
 /* process packets on logged in connection */
 static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 {	
-	//print_content(server,pkt,"Server");
+	print_content(server,pkt,"Server");
 
 	bool ready = false;
 	bool idle_tx = false;
@@ -375,13 +382,21 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	server->ready = ready;
 	server->pool->stats.server_bytes += pkt->len;
 
-	 if(server->ignore >0  && pkt->type == '1')
+	if(pkt->type == '1')
+	{
+		if(server->popNode != NULL && server->popNode->stmtId == server->ignore)
 		{
-			server->ignore--;
-			//slog_info(server, "Packet type 1 detected which is to be skipped!!!");
+			popNode(server);
+			slog_info(server, "Packet type 1 detected which is to be skipped %d !!!", server->ignore);
 			sbuf_prepare_skip(sbuf, pkt->len);
+			server->ignore--;
 			return true;
-		}
+	
+		}	
+		server->ignore--;
+
+	}
+
 
 	if (server->setting_vars) {
 		Assert(client);

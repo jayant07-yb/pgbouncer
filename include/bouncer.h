@@ -400,6 +400,12 @@ struct prepStmtlist{
 	struct prepStmt *prepstmt;
 };
 
+struct QueueNode {
+	int stmtId ; 
+	struct QueueNode *next;
+
+};
+
 /*
  * A client or server connection.
  *
@@ -408,6 +414,9 @@ struct prepStmtlist{
 struct PgSocket {
 	struct AATree stmt_tree;
 	bool init ;
+	struct QueueNode *popNode;
+	struct QueueNode *pushNode;
+	
 
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
