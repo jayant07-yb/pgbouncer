@@ -889,33 +889,25 @@ const char mapp[] = {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'
 char* stmtname(int tempID, const char* data , int startpoint ,bool isBegin)
 {
 	int len =0;
-	for(;len < data[len+startpoint] > 32 ;len++ ) ;
+	for(; data[len+startpoint] !=0  ;len++ ) ;
 
 	char *ServerStatementID =(char *)malloc(sizeof(char)*(len+2+ 3)) ; //Change the size
 	
 	for(int i=0;i<len+5 ;i++ )
 	ServerStatementID[i] =0;
 
-	if(!isBegin)
-	{	
-		ServerStatementID[0] = mapp[tempID/(36*36)] ;
-		tempID %= 36*36 ;
-		ServerStatementID[1] = mapp[tempID/(36)] ;
-		tempID %= 36 ; 
-		ServerStatementID[2] = mapp[tempID] ;
+	ServerStatementID[0] = mapp[tempID/(36*36)] ;
+	tempID %= 36*36 ;
+	ServerStatementID[1] = mapp[tempID/(36)] ;
+	tempID %= 36 ; 
+	ServerStatementID[2] = mapp[tempID] ;
 	
 
-		for(int itr=0; data[startpoint + itr] > 32 ;itr++)
-		{
-			ServerStatementID[3+itr] =  data[startpoint+itr] ; 
-		}
-	}else
+	for(int itr=0; data[startpoint + itr] > 32 ;itr++)
 	{
-		for(int itr=0; data[startpoint + itr] > 32 ;itr++)
-		{
-			ServerStatementID[itr] =  data[startpoint+itr] ; 
-		}
+		ServerStatementID[3+itr] =  data[startpoint+itr] ; 
 	}
+	
 
 	return  ServerStatementID ;
 }
@@ -1009,12 +1001,12 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 	pktbuf_start_packet(buf, 'P');
 
 	/* Send the two chars of the client ID	*/
-	//int tempID=server->link->ClientID ;
-	//pktbuf_put_char(buf,mapp[tempID/(36*36)] );
-	//tempID %= 36*36 ;
-	//pktbuf_put_char(buf,mapp[tempID/(36)]);
-	//tempID %= 36 ; 
-	//pktbuf_put_char(buf,mapp[tempID]); ;
+	int tempID=server->link->ClientID ;
+	pktbuf_put_char(buf,mapp[tempID/(36*36)] );
+	tempID %= 36*36 ;
+	pktbuf_put_char(buf,mapp[tempID/(36)]);
+	tempID %= 36 ; 
+	pktbuf_put_char(buf,mapp[tempID]); ;
 //
 	/* Need to change the size */
 	for(int i=5;i<ppstmt->size;i++)
@@ -1104,6 +1096,19 @@ void verifyPrepStmt(PgSocket *server,  PktHdr *pkt, bool isBegin)
 	makeready(server,ServerCopy,1);
 }
 
+void sendExec(PgSocket *client, struct PktHdr *pkt)
+{
+	PktBuf *buf = pktbuf_dynamic(512);
+	pktbuf_start_packet(buf,*pkt->data.data);
+		pktbuf_put_bytes(buf,pkt->data.data+5,pkt->len-5);
+		pktbuf_finish_packet(buf);
+	
+	
+	bool res = pktbuf_send_immediate(buf,client->link);
+	sbuf_prepare_skip(&client->sbuf,pkt->len);
+	pktbuf_free(buf);
+}
+
 PktBuf *bindpkt ; 
 void sendBind(PgSocket *client, struct PktHdr *pkt , int startingpoint)
 {
@@ -1125,12 +1130,12 @@ void sendBind(PgSocket *client, struct PktHdr *pkt , int startingpoint)
 	}
 	
 	////Client ID
-	//int tempID=client->ClientID ;
-	//pktbuf_put_char(buf,mapp[tempID/(36*36)]);
-	//tempID %= 36*36 ;
-	//pktbuf_put_char(buf,mapp[tempID/36]);
-	//tempID %= 36 ; 
-	//pktbuf_put_char(buf,mapp[tempID]);
+	int tempID=client->ClientID ;
+	pktbuf_put_char(buf,mapp[tempID/(36*36)]);
+	tempID %= 36*36 ;
+	pktbuf_put_char(buf,mapp[tempID/36]);
+	tempID %= 36 ; 
+	pktbuf_put_char(buf,mapp[tempID]);
 
 	for(int i=startingpoint;i<pkt->len;i++)
 	{
@@ -1161,8 +1166,8 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	
 		if(pkt->type=='P' && pkt->data.data[5] > 32 )
 			register_pkt(client, pkt,ignoreStmt);
-		//else if(pkt->type=='B')
-		//	verifyPrepStmt(client->link,pkt);
+		else if(pkt->type=='B')
+			verifyPrepStmt(client->link,pkt,0);
 	} 
 
 	SBuf *sbuf = &client->sbuf;
@@ -1253,15 +1258,15 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 	/* forward the packet */
 
-		//if(pkt->type == 'B' )
-		//{	int startppt = startingPointBindPkt(pkt);
-		//	if(pkt->data.data[startppt]  != 0)
-		//	{
-		//		sendBind(client,pkt,startppt);
-		//		sbuf_prepare_skip(sbuf, pkt->len);
-		//		return true ;
-		//	}
-		//}
+		if(pkt->type == 'B' )
+		{	int startppt = startingPointBindPkt(pkt);
+			if(pkt->data.data[startppt]  != 0)
+			{
+				sendBind(client,pkt,startppt);
+				sbuf_prepare_skip(sbuf, pkt->len);
+				return true ;
+			}
+		}
 
 		if(pkt->type=='P' && pkt->data.data[5] > 32 )
 		{	sbuf_prepare_skip(sbuf, pkt->len);
@@ -1270,8 +1275,9 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	//
 
 
-
-	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
+	sendExec(client,pkt);
+	sbuf_prepare_skip(sbuf,pkt->len);
+	//sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
 
 	return true;
 }
