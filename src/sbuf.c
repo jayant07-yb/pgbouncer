@@ -41,6 +41,7 @@
 #define ACT_SEND 1
 #define ACT_SKIP 2
 #define ACT_CALL 3
+#define ACT_REPLACE 4
 
 enum TLSState {
 	SBUF_TLS_NONE,
@@ -323,6 +324,21 @@ bool sbuf_close(SBuf *sbuf)
 }
 
 /* proto_fn tells to send some bytes to socket */
+void sbuf_prepare_replace(SBuf *sbuf, SBuf *dst, unsigned amount, unsigned startpoint, int clientID)
+{
+	AssertActive(sbuf);
+	Assert(sbuf->pkt_remain == 0);
+	/* Assert(sbuf->pkt_action == ACT_UNSET || sbuf->pkt_action == ACT_SEND || iobuf_amount_pending(&sbuf->io)); */
+	Assert(amount > 0);
+
+	sbuf->pkt_action = ACT_REPLACE;
+	sbuf->pkt_remain = amount;
+	sbuf->pkt_append = startpoint;
+	sbuf->dst = dst;
+	sbuf->clientID = clientID;
+}
+
+/* proto_fn tells to send some bytes to socket */
 void sbuf_prepare_send(SBuf *sbuf, SBuf *dst, unsigned amount)
 {
 	AssertActive(sbuf);
@@ -508,6 +524,52 @@ static bool sbuf_queue_send(SBuf *sbuf)
 
 	return true;
 }
+static bool sbuf_send_append(SBuf *sbuf)
+{
+	int avail;
+	IOBuf *io = sbuf->io;
+
+	AssertActive(sbuf);
+	Assert(sbuf->dst || iobuf_amount_pending(io) == 0);
+
+	/* how much data is available for sending */
+	avail = iobuf_amount_pending(io);
+	if (avail == 0)
+		return true;
+
+	if (sbuf->dst->sock == 0) {
+		log_error("sbuf_send_pending: no dst sock?");
+		return false;
+	}
+
+	/* actually send it */
+
+	unsigned append_point = sbuf->pkt_append;
+	PktBuf *buf = pktbuf_dynamic(512);
+	pktbuf_start_packet(buf,*( io->buf + io->done_pos));
+	pktbuf_put_bytes(buf,io->buf + io->done_pos + 5,append_point-5);	/* All bytes before the append point */
+	
+	/* Send the two chars of the client ID	*/
+	int tempID= sbuf->clientID ;
+	pktbuf_put_char(buf,mapp[tempID/(36*36)] );
+	tempID %= 36*36 ;
+	pktbuf_put_char(buf,mapp[tempID/(36)]);
+	tempID %= 36 ; 
+	pktbuf_put_char(buf,mapp[tempID]); ;
+
+	pktbuf_put_bytes(buf,io->buf + io->done_pos + append_point, avail - append_point);	/* All bytes after the append point */
+
+	pktbuf_finish_packet(buf);
+	
+	
+	bool res = pktbuf_send_immediate_buf(buf,sbuf->dst);
+	pktbuf_free(buf);
+
+	if(res)
+		io->done_pos += avail;
+	return res ; 
+
+}
 
 /*
  * There's data in buffer to be sent. Returns bool if processing can continue.
@@ -559,6 +621,7 @@ try_more:
 	 */
 	goto try_more;
 }
+
 
 /* process as much data as possible */
 static bool sbuf_process_pending(SBuf *sbuf)
@@ -618,10 +681,18 @@ static bool sbuf_process_pending(SBuf *sbuf)
 		case ACT_SKIP:
 			iobuf_tag_skip(io, avail);
 			break;
+		case ACT_REPLACE:
+			/* Skip the current packet */
+			iobuf_tag_send(io, avail);
+			break;
 		}
 		sbuf->pkt_remain -= avail;
 	}
 
+	if(sbuf->pkt_action == ACT_REPLACE)
+	{
+		return sbuf_send_append(sbuf);
+	}else
 	return sbuf_send_pending(sbuf);
 }
 

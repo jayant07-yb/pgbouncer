@@ -35,6 +35,7 @@ struct PktHdr {
 	bool intercepted; // Intercept this packet
 	unsigned type;
 	unsigned len;
+	unsigned append_point;
 	struct MBuf data;
 };
 

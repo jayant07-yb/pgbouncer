@@ -77,7 +77,7 @@ struct SBuf {
 	int sock;		/* fd for this socket */
 
 	unsigned pkt_remain;	/* total packet length remaining */
-
+	unsigned pkt_append;	/* starting point, if the packet need to add some data */
 	sbuf_cb_t proto_cb;	/* protocol callback */
 
 	SBuf *dst;		/* target SBuf for current packet */
@@ -87,6 +87,8 @@ struct SBuf {
 	const SBufIO *ops;	/* normal vs. TLS */
 	struct tls *tls;	/* TLS context */
 	const char *tls_host;	/* target hostname */
+
+	int clientID;
 };
 
 #define sbuf_socket(sbuf) ((sbuf)->sock)

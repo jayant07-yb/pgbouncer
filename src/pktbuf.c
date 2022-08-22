@@ -115,6 +115,21 @@ bool pktbuf_send_immediate(PktBuf *buf, PgSocket *sk)
 	return res == amount;
 }
 
+bool pktbuf_send_immediate_buf(PktBuf *buf, SBuf *sbuf)
+{
+	uint8_t *pos = buf->buf + buf->send_pos;
+	int amount = buf->write_pos - buf->send_pos;
+	ssize_t res;
+
+	if (buf->failed)
+		return false;
+	res = sbuf_op_send(sbuf, pos, amount);
+	if (res < 0) {
+		log_debug("pktbuf_send_immediate: %s", strerror(errno));
+	}
+	return res == amount;
+}
+
 static void pktbuf_send_func(evutil_socket_t fd, short flags, void *arg)
 {
 	PktBuf *buf = arg;
