@@ -981,7 +981,7 @@ bool addNode(PgSocket *server, int val)
 	if(server->popNode == NULL)
 	{
 		server->popNode = server->pushNode  ; 
-		slog_debug(server, "Ignore packet of type '1' added with the id %d", val);
+		slog_info(server, "Ignore packet of type '1' added with the id %d", val);
 	}
 	
 	server->pushNode->stmtId = val ; 
@@ -1010,10 +1010,11 @@ bool makeready(PgSocket *server, struct prepStmt *ppstmt)
 	pktbuf_finish_packet(buf);
 	res = pktbuf_send_immediate(buf, server);
 	
+	server->ignoreAssign++;	/* An extra for make ready */
 	if(!addNode(server,server->ignoreAssign))
 		slog_info(server,"Insufficient memory!!!,\n	Unable to store prepared statement %s", ppstmt->ServerStatementID);
 	else
-		slog_info(server,"Node added");
+		slog_info(server,"Node added with value %d",server->ignoreAssign);
 
 	pktbuf_free(buf);
 	return res;
