@@ -1900,8 +1900,6 @@ void print_content(PgSocket *server, PktHdr *pkt , char desc[8])
 }
 
 
-
-
 /* Print the contents of a packet */
 void print_contentS(PgSocket *server, uint8_t *arr , int size)
 {	
@@ -1920,7 +1918,5 @@ void print_contentS(PgSocket *server, uint8_t *arr , int size)
 	slog_info(server, "Packet received >%s ",output);
 	
 }
-
-
 
 const char mapp[] = {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3','4','5','6','7','8','9','_'};

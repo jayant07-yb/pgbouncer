@@ -524,6 +524,8 @@ static bool sbuf_queue_send(SBuf *sbuf)
 
 	return true;
 }
+
+PktBuf *buf;
 static bool sbuf_send_append(SBuf *sbuf)
 {
 	int avail;
@@ -545,7 +547,12 @@ static bool sbuf_send_append(SBuf *sbuf)
 	/* actually send it */
 
 	unsigned append_point = sbuf->pkt_append;
-	PktBuf *buf = pktbuf_dynamic(512);
+	
+	if(!buf)
+		buf = pktbuf_dynamic(1024);
+
+	assert(buf!=NULL);	//replace it with retry
+	
 	pktbuf_start_packet(buf,*( io->buf + io->done_pos));
 	pktbuf_put_bytes(buf,io->buf + io->done_pos + 5,append_point-5);	/* All bytes before the append point */
 	
@@ -561,9 +568,11 @@ static bool sbuf_send_append(SBuf *sbuf)
 
 	pktbuf_finish_packet(buf);
 	
-	
+	//print_contentS(NULL,buf->buf+buf->send_pos, buf->write_pos - buf->send_pos , "No where");
+
 	bool res = pktbuf_send_immediate_buf(buf,sbuf->dst);
-	pktbuf_free(buf);
+	
+	pktbuf_reset(buf);
 
 	if(res)
 		io->done_pos += avail;
@@ -621,7 +630,6 @@ try_more:
 	 */
 	goto try_more;
 }
-
 
 /* process as much data as possible */
 static bool sbuf_process_pending(SBuf *sbuf)

@@ -253,7 +253,7 @@ void popNode(PgSocket* server)
 /* process packets on logged in connection */
 static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 {	
-	print_content(server,pkt,"Server");
+	//print_content(server,pkt,"Server");
 
 	bool ready = false;
 	bool idle_tx = false;
@@ -387,12 +387,12 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 		if(server->popNode != NULL && server->popNode->stmtId == server->ignoreRemove)
 		{
 			popNode(server);
-			slog_info(server, "Packet type 1 detected which is to be skipped %d !!!", server->ignoreRemove);
+			slog_debug(server, "Packet type 1 detected which is to be skipped %d !!!", server->ignoreRemove);
 			sbuf_prepare_skip(sbuf, pkt->len);
 			return true;
 	
 		}else
-			slog_info(server,"Packet type 1 detected which is not to be skipped with id %d and pop node %d", (server->ignoreRemove, server->popNode == NULL) ? 0 : 1 );
+			slog_debug(server,"Packet type 1 detected which is not to be skipped with id %d and pop node %d", (server->ignoreRemove, server->popNode == NULL) ? 0 : 1 );
 	}
 
 	if (server->setting_vars) {

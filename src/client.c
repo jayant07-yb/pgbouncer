@@ -911,7 +911,8 @@ char* stmtname(int tempID, const char* data , int startpoint)
 
 struct prepStmt* getPrepStmt(const PgSocket *client, const PktHdr *pkt ){
 	struct prepStmt *result = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
-
+	if(result == NULL)
+		return  result ; 
 	result->ServerStatementID = stmtname(client->ClientID , pkt->data.data , STMTNAME_START_POINT_PARSE) ; 
 	result->size = pkt->len ; 
 	result->realpacket = (uint8_t *)malloc(sizeof(uint8_t )*pkt->len);
@@ -923,11 +924,11 @@ struct prepStmt* getPrepStmt(const PgSocket *client, const PktHdr *pkt ){
 	return result ; 
 }
 
-void register_pkt(PgSocket *client, PktHdr *pkt)
+bool register_pkt(PgSocket *client, PktHdr *pkt)
 {
 	/* Unnamed prepared statements are to be ignored */
 	if (pkt->data.data[STMTNAME_START_POINT_PARSE]==NULL)			
-		return; 							
+		return true; 							
 	/*
 	 * What if the unnamed prepared statement is used in after the transaction also	?
 	 */	
@@ -936,14 +937,23 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 
 	psmt1 = getPrepStmt(client, pkt );
 	psmt2 = getPrepStmt(client, pkt );
-	
+	if(psmt1 == NULL || psmt2 == NULL)
+	{
+		slog_info(client , "Unable to allocate the memory for the prepared statement");
+		return false;
+	}
+		
 	assert(strcmp(psmt1->ServerStatementID,psmt2->ServerStatementID)==0);
 
 	/*	Add the preparedStatement to client and server list */
 	aatree_insert(&(client->stmt_tree), (uintptr_t)psmt1->ServerStatementID, &psmt1->tree_node);
 	aatree_insert(&(client->link->stmt_tree), (uintptr_t)psmt2->ServerStatementID, &psmt2->tree_node);
 	
+	assert(aatree_search(&client->stmt_tree,psmt1->ServerStatementID)!=NULL ) ;
+	assert(aatree_search(&client->stmt_tree,psmt2->ServerStatementID)!=NULL ) ;
 	pkt->append_point = STMTNAME_START_POINT_PARSE;
+
+	return true;
 }
 
 bool matchServerPstmtID(PgSocket *server, int ClientID, PktHdr *pkt, struct prepStmt *ppstmt)
@@ -965,6 +975,7 @@ bool matchServerPstmtID(PgSocket *server, int ClientID, PktHdr *pkt, struct prep
 		if(!(*pktval == *serverID))
 			return false;
 	}
+	
 	return true;
 }
 
@@ -981,17 +992,19 @@ bool addNode(PgSocket *server, int val)
 	if(server->popNode == NULL)
 	{
 		server->popNode = server->pushNode  ; 
-		slog_info(server, "Ignore packet of type '1' added with the id %d", val);
+		slog_debug(server, "Ignore packet of type '1' added with the id %d", val);
 	}
 	
 	server->pushNode->stmtId = val ; 
 	return true;
 }
 
+PktBuf *buf;
 bool makeready(PgSocket *server, struct prepStmt *ppstmt)
 {	
 	bool res;
-	PktBuf *buf = pktbuf_dynamic(512);
+	if(!buf)
+		buf = pktbuf_dynamic(512);
 
 	/* Parse */
 	pktbuf_start_packet(buf, 'P');
@@ -1014,9 +1027,9 @@ bool makeready(PgSocket *server, struct prepStmt *ppstmt)
 	if(!addNode(server,server->ignoreAssign))
 		slog_info(server,"Insufficient memory!!!,\n	Unable to store prepared statement %s", ppstmt->ServerStatementID);
 	else
-		slog_info(server,"Node added with value %d",server->ignoreAssign);
+		slog_debug(server,"Node added with value %d",server->ignoreAssign);
 
-	pktbuf_free(buf);
+	pktbuf_reset(buf);
 	return res;
 }
 
@@ -1028,8 +1041,7 @@ bool copyValues(struct prepStmt *dest,  struct prepStmt *src)
 	dest->ServerStatementID = (char * )malloc(sizeof(char) * (1+stmtlen));
 	if(!dest->ServerStatementID)
 		return  false;
-	for(int i =0; i < stmtlen ;i++)
-		dest->ServerStatementID[i] = src->ServerStatementID[i] ;
+	strcpy(dest->ServerStatementID,src->ServerStatementID);
 
 	dest->realpacket = (char * )malloc(sizeof(char)*(dest->size));
 	if(!dest->realpacket)
@@ -1080,7 +1092,7 @@ bool verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 	if(ClientCopy == NULL) 
 	{
 		/* We don't have the statement registered in the client's list */
-		slog_debug(server->link, "No Prepared statment with the name %s was found", pkt->data.data+prepstmtnamestart);
+		slog_info(server->link, "No Prepared statment with the name %s was found", pkt->data.data+prepstmtnamestart);
 
 		/* 
 		 * Client application will be returned an error
@@ -1105,9 +1117,11 @@ bool verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 		return false;
 	}
 	
+
 	if(makeready(server,ServerCopy))
 	{
 		slog_debug(server,"Parse packet with prepare statement %s sent!!!", ServerCopy->ServerStatementID);
+		assert(strcmp(ServerCopy->ServerStatementID,ClientCopy->ServerStatementID) == 0);
 		aatree_insert(&server->stmt_tree, (uintptr_t)name, &ServerCopy->tree_node);
 		return true;
 	}else
@@ -1134,7 +1148,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	SBuf *sbuf = &client->sbuf;
 	int rfq_delta = 0;
 
-	print_content(client,pkt,"Client");
+	//print_content(client,pkt,"Client");
 	switch (pkt->type) {
 
 	/* one-packet queries */
@@ -1178,7 +1192,8 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 			if(pkt->data.data[STMTNAME_START_POINT_PARSE]!=0) 
 			{
-				register_pkt(client, pkt);	/* Register the packet */
+				if(!register_pkt(client, pkt))
+					return false;			/* Register the packet */
 											/* Store the starting point of edit */
 				toSkip = 1;
 			}
