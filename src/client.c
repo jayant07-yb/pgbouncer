@@ -882,12 +882,8 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 }
 
 /*
- * Yugabyte Changes 
+ * Yugabyte Changes for prepared statement support in the transaction mode
  */
-
-#define STMTNAME_START_POINT_PARSE 5	/*	From which byte the preparestatement name is started in the Parse packet */
-#define CLIENTID_LENGTH 3
-#define PORTAL_START_POINT_BIND 5
 
 char* stmtname(int tempID, const char* data , int startpoint)
 {
@@ -946,6 +942,7 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 	/*	Add the preparedStatement to client and server list */
 	aatree_insert(&(client->stmt_tree), (uintptr_t)psmt1->ServerStatementID, &psmt1->tree_node);
 	aatree_insert(&(client->link->stmt_tree), (uintptr_t)psmt2->ServerStatementID, &psmt2->tree_node);
+	
 	pkt->append_point = STMTNAME_START_POINT_PARSE;
 }
 
@@ -971,9 +968,11 @@ bool matchServerPstmtID(PgSocket *server, int ClientID, PktHdr *pkt, struct prep
 	return true;
 }
 
-void addNode(PgSocket *server, int val)
+bool addNode(PgSocket *server, int val)
 {
 	struct QueueNode *node  = (struct QueueNode *) malloc(sizeof(struct QueueNode ));
+	if(!node)
+		return false;	/*	Failed to allocate the memory */
 	node->next  = NULL ; 
 	if(server->pushNode != NULL )
 		server->pushNode->next = node  ;
@@ -982,7 +981,7 @@ void addNode(PgSocket *server, int val)
 	if(server->popNode == NULL)
 	{
 		server->popNode = server->pushNode  ; 
-		slog_info(NULL, "Node added");
+		slog_debug(server, "Ignore packet of type '1' added with the id %d", val);
 	}
 	
 	server->pushNode->stmtId = val ; 
@@ -1009,27 +1008,36 @@ bool makeready(PgSocket *server, struct prepStmt *ppstmt)
 		pktbuf_put_char(buf,ppstmt->realpacket[i]);
 	pktbuf_finish_packet(buf);
 	res = pktbuf_send_immediate(buf, server);
-	addNode(server,server->ignoreAssign);
+	
+	if(!addNode(server,server->ignoreAssign))
+		slog_info(server,"Insufficient memory!!!,\n	Unable to store prepared statement %s", ppstmt->ServerStatementID);
+	
 	pktbuf_free(buf);
 	return res;
 }
 
-void copyValues(struct prepStmt *dest,  struct prepStmt *src)
+bool copyValues(struct prepStmt *dest,  struct prepStmt *src)
 {
-	//We need to copy everything except the tree node
-	(dest->size) = src->size ;
+	/* Make a copy of the prepStmt structure */
+	dest->size = src->size ;
 	int stmtlen = strlen(src->ServerStatementID) ;
 	dest->ServerStatementID = (char * )malloc(sizeof(char) * (1+stmtlen));
-
+	if(!dest->ServerStatementID)
+		return  false;
 	for(int i =0; i < stmtlen ;i++)
-		dest->ServerStatementID[i] = src->ServerStatementID[i] ;		//This is the only way of copying 
+		dest->ServerStatementID[i] = src->ServerStatementID[i] ;
 
 	dest->realpacket = (char * )malloc(sizeof(char)*(dest->size));
+	if(!dest->realpacket)
+		return	false;
+
 	for(int i=0 ;i<dest->size ;i++)
 		dest->realpacket[i]  =  src->realpacket[i];
+	
+	return true;
 }
 
-int startingPointBindPkt(const PktHdr *pkt)
+int StmtNameStartingPointBindPkt(const PktHdr *pkt)
 {
 	int ending_point_portal_name = PORTAL_START_POINT_BIND ; 
 	for( ; pkt->data.data[ending_point_portal_name] != 0 ; ending_point_portal_name++ ) ;
@@ -1047,7 +1055,7 @@ bool verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 	*/
 	assert(pkt->type == 'B');
 
-	int prepstmtnamestart  = startingPointBindPkt(pkt);
+	int prepstmtnamestart  = StmtNameStartingPointBindPkt(pkt);
 
 	if( pkt->data.data[prepstmtnamestart]==0)
 		return 0;
@@ -1060,7 +1068,7 @@ bool verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 	assert(strcmp(name,"")!= 0);
 
 	if(aatree_search(&server->stmt_tree, (uintptr_t)name))
-		return 1;
+		return true;
 
 	struct AANode *node;
 	node = aatree_search(&server->link->stmt_tree, (uintptr_t)name);
@@ -1068,20 +1076,50 @@ bool verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 	if(ClientCopy == NULL) 
 	{
 		/* We don't have the statement registered in the client's list */
-		slog_debug(NULL, "Not found");
-		return 0;
+		slog_debug(server->link, "No Prepared statment with the name %s was found", pkt->data.data+prepstmtnamestart);
+
+		/* 
+		 * Client application will be returned an error
+		 * "Prepared statement not found", 
+		 * with the name same as that was allocated by the client application 
+		 */
+		return false;
 	}
 
 	/* Create a copy of the prepared statement object */
 	struct prepStmt* ServerCopy = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
-	copyValues(ServerCopy, ClientCopy);
+	if(!copyValues(ServerCopy, ClientCopy))
+	{
+		slog_info(server, "Insufficient Memory!!!\n Unable to copy the prepStmt %s", ClientCopy->ServerStatementID);
+
+		/* 
+		 * Client application will be returned an error
+		 * "Prepared statement not found", 
+		 * with the name same as that was allocated by the client application 
+		 */
+
+		return false;
+	}
 	
 	if(makeready(server,ServerCopy))
 	{
+		slog_debug(server,"Parse packet with prepare statement %s sent!!!", ServerCopy->ServerStatementID);
 		aatree_insert(&server->stmt_tree, (uintptr_t)name, &ServerCopy->tree_node);
-		return 1;
-	}else 
-		return 0;
+		return true;
+	}else
+	{
+		/*
+		 * Unable to send the parse packet 
+		 */
+		slog_info(server,"Unable to send the parse packet with prepared statement %s",ServerCopy->ServerStatementID);
+		/* 
+		 * Client application will be returned an error
+		 * "Prepared statement not found", 
+		 * with the name same as that was allocated by the client application 
+		 */
+		return false;
+	}
+		
 }
 
 /* decide on packets of logged-in client */

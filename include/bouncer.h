@@ -194,6 +194,9 @@ extern int cf_sbuf_len;
 /* buffer size for startup noise */
 #define STARTUP_BUF	1024
 
+#define STMTNAME_START_POINT_PARSE 5	/*	Byte from which the preparestatement name is started in the Parse packet */
+#define CLIENTID_LENGTH 3	/* Length of the client ID */
+#define PORTAL_START_POINT_BIND 5	/* Byte from which the portal name is started in the Bind packet */
 
 /*
  * Remote/local address
