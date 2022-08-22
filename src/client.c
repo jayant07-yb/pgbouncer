@@ -885,8 +885,9 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
  * Yugabyte Changes 
  */
 
-#define STMTNAMESTART_PARSE 5	/*	From which byte the preparestatement name is started in the Parse packet */
+#define STMTNAME_START_POINT_PARSE 5	/*	From which byte the preparestatement name is started in the Parse packet */
 #define CLIENTID_LENGTH 3
+#define PORTAL_START_POINT_BIND 5
 
 char* stmtname(int tempID, const char* data , int startpoint)
 {
@@ -915,7 +916,7 @@ char* stmtname(int tempID, const char* data , int startpoint)
 struct prepStmt* getPrepStmt(const PgSocket *client, const PktHdr *pkt ){
 	struct prepStmt *result = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
 
-	result->ServerStatementID = stmtname(client->ClientID , pkt->data.data , STMTNAMESTART_PARSE) ; 
+	result->ServerStatementID = stmtname(client->ClientID , pkt->data.data , STMTNAME_START_POINT_PARSE) ; 
 	result->size = pkt->len ; 
 	result->realpacket = (uint8_t *)malloc(sizeof(uint8_t )*pkt->len);
 	for(int i=0;i<pkt->len;i++)
@@ -928,7 +929,8 @@ struct prepStmt* getPrepStmt(const PgSocket *client, const PktHdr *pkt ){
 
 void register_pkt(PgSocket *client, PktHdr *pkt)
 {
-	if (pkt->data.data[STMTNAMESTART_PARSE]==NULL)			/* Unnamed prepared statements are to be ignored */
+	/* Unnamed prepared statements are to be ignored */
+	if (pkt->data.data[STMTNAME_START_POINT_PARSE]==NULL)			
 		return; 							
 	/*
 	 * What if the unnamed prepared statement is used in after the transaction also	?
@@ -944,7 +946,7 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 	/*	Add the preparedStatement to client and server list */
 	aatree_insert(&(client->stmt_tree), (uintptr_t)psmt1->ServerStatementID, &psmt1->tree_node);
 	aatree_insert(&(client->link->stmt_tree), (uintptr_t)psmt2->ServerStatementID, &psmt2->tree_node);
-	pkt->append_point = STMTNAMESTART_PARSE;
+	pkt->append_point = STMTNAME_START_POINT_PARSE;
 }
 
 bool matchServerPstmtID(PgSocket *server, int ClientID, PktHdr *pkt, struct prepStmt *ppstmt)
@@ -986,7 +988,7 @@ void addNode(PgSocket *server, int val)
 	server->pushNode->stmtId = val ; 
 }
 
-void makeready(PgSocket *server, struct prepStmt *ppstmt)
+bool makeready(PgSocket *server, struct prepStmt *ppstmt)
 {	
 	bool res;
 	PktBuf *buf = pktbuf_dynamic(512);
@@ -1009,6 +1011,7 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt)
 	res = pktbuf_send_immediate(buf, server);
 	addNode(server,server->ignoreAssign);
 	pktbuf_free(buf);
+	return res;
 }
 
 void copyValues(struct prepStmt *dest,  struct prepStmt *src)
@@ -1028,10 +1031,9 @@ void copyValues(struct prepStmt *dest,  struct prepStmt *src)
 
 int startingPointBindPkt(const PktHdr *pkt)
 {
-	int ending_point_portal_name = 5 ; 
-	int starting_point_prepared_stmt = ending_point_portal_name+1 ;
-	for( ; pkt->data.data[ending_point_portal_name] != 0 ; ending_point_portal_name++ , starting_point_prepared_stmt++) ;
-	return starting_point_prepared_stmt;
+	int ending_point_portal_name = PORTAL_START_POINT_BIND ; 
+	for( ; pkt->data.data[ending_point_portal_name] != 0 ; ending_point_portal_name++ ) ;
+	return ending_point_portal_name+1;
 }
 
 bool verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
@@ -1054,65 +1056,32 @@ bool verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 
 	char *name = stmtname(server->link->ClientID , pkt->data.data , prepstmtnamestart) ; 
 
+	/* The prepared statement is not unnamed */
+	assert(strcmp(name,"")!= 0);
+
 	if(aatree_search(&server->stmt_tree, (uintptr_t)name))
 		return 1;
 
-	//Prepare the statement
 	struct AANode *node;
 	node = aatree_search(&server->link->stmt_tree, (uintptr_t)name);
 	struct prepStmt* ClientCopy = node ? container_of(node, struct prepStmt , tree_node) : NULL;
 	if(ClientCopy == NULL) 
 	{
+		/* We don't have the statement registered in the client's list */
 		slog_debug(NULL, "Not found");
-		return 1;
+		return 0;
 	}
 
+	/* Create a copy of the prepared statement object */
 	struct prepStmt* ServerCopy = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
 	copyValues(ServerCopy, ClientCopy);
-	aatree_insert(&server->stmt_tree, (uintptr_t)name, &ServerCopy->tree_node);
 	
-	makeready(server,ServerCopy);
-	return 1; 
-
-}
-
-PktBuf *bindpkt ; 
-void sendBind(PgSocket *client, struct PktHdr *pkt , int startingpoint)
-{
-	bool res;
-	if(!bindpkt) 
-	 	bindpkt = pktbuf_dynamic(512);
-		
-	PktBuf *buf = bindpkt;
-
-	//	/* Bind */
-	pktbuf_start_packet(buf, 'B');
-	
-	///* Need to change the size */
-	//5th index is the portal name
-	for(int i=5  ;i<startingpoint;i++)	//we need to put the 0 char also
+	if(makeready(server,ServerCopy))
 	{
-		pktbuf_put_char(buf,pkt->data.data[i]);
-		//slog_info(client->link, "Inserting portal%d :: %d i.e. %c",i, pkt->data.data[i] , pkt->data.data[i] );
-	}
-	
-	////Client ID
-	int tempID=client->ClientID ;
-	pktbuf_put_char(buf,mapp[tempID/(36*36)]);
-	tempID %= 36*36 ;
-	pktbuf_put_char(buf,mapp[tempID/36]);
-	tempID %= 36 ; 
-	pktbuf_put_char(buf,mapp[tempID]);
-
-	for(int i=startingpoint;i<pkt->len;i++)
-	{
-		pktbuf_put_char(buf,pkt->data.data[i]);
-	}
-	pktbuf_finish_packet(buf);
-
-	res = pktbuf_send_immediate(buf, client->link);
-	
-	pktbuf_reset(buf);
+		aatree_insert(&server->stmt_tree, (uintptr_t)name, &ServerCopy->tree_node);
+		return 1;
+	}else 
+		return 0;
 }
 
 /* decide on packets of logged-in client */
