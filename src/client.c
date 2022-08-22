@@ -886,30 +886,29 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
  */
 
 #define STMTNAMESTART_PARSE 5	/*	From which byte the preparestatement name is started in the Parse packet */
-bool sendD = 0;
+#define CLIENTID_LENGTH 3
+
 char* stmtname(int tempID, const char* data , int startpoint)
 {
-	int len =0;
-	for(; data[len+startpoint] !=0  ;len++ ) ;
+	int stmt_len =0;
+	for(; data[stmt_len+startpoint] !=0 ;stmt_len++ ) ;
 
-	char *ServerStatementID =(char *)malloc(sizeof(char)*(len+2+ 3)) ; //Change the size
+	char *ServerStatementID =(char *)malloc(sizeof(char)*(stmt_len+CLIENTID_LENGTH+2)) ;
 	
-	for(int i=0;i<len+5 ;i++ )
-	ServerStatementID[i] =0;
+	for(int i=0;i<stmt_len+CLIENTID_LENGTH+2;i++ )
+		ServerStatementID[i] =0;
 
+	/* Client ID */
 	ServerStatementID[0] = mapp[tempID/(36*36)] ;
 	tempID %= 36*36 ;
 	ServerStatementID[1] = mapp[tempID/(36)] ;
 	tempID %= 36 ; 
 	ServerStatementID[2] = mapp[tempID] ;
 	
-
-	for(int itr=0; data[startpoint + itr] > 32 ;itr++)
-	{
-		ServerStatementID[3+itr] =  data[startpoint+itr] ; 
-	}
+	/* Copy rest data */
+	for(int itr=0; data[startpoint + itr] !=0 ;itr++)
+		ServerStatementID[CLIENTID_LENGTH+itr] =  data[startpoint+itr] ; 
 	
-
 	return  ServerStatementID ;
 }
 
@@ -940,18 +939,17 @@ void register_pkt(PgSocket *client, PktHdr *pkt)
 	psmt1 = getPrepStmt(client, pkt );
 	psmt2 = getPrepStmt(client, pkt );
 	
-	/*	Add the preparedStatement to client list */
+	assert(strcmp(psmt1->ServerStatementID,psmt2->ServerStatementID)==0);
 
+	/*	Add the preparedStatement to client and server list */
 	aatree_insert(&(client->stmt_tree), (uintptr_t)psmt1->ServerStatementID, &psmt1->tree_node);
-	
 	aatree_insert(&(client->link->stmt_tree), (uintptr_t)psmt2->ServerStatementID, &psmt2->tree_node);
-
 	pkt->append_point = STMTNAMESTART_PARSE;
 }
 
 bool matchServerPstmtID(PgSocket *server, int ClientID, PktHdr *pkt, struct prepStmt *ppstmt)
 {
-	/*Change the declaration */
+	/* Change the declaration */
 	int tempID=ClientID ;
 	int a = mapp[tempID/(36*36)] ;
 	tempID %= 36*36 ;
