@@ -985,6 +985,7 @@ bool addNode(PgSocket *server, int val)
 	}
 	
 	server->pushNode->stmtId = val ; 
+	return true;
 }
 
 bool makeready(PgSocket *server, struct prepStmt *ppstmt)
