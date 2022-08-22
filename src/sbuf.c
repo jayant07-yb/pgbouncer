@@ -656,7 +656,7 @@ static bool sbuf_process_pending(SBuf *sbuf)
 			Assert(sbuf->pkt_remain > 0);
 		}
 
-		if (sbuf->pkt_action == ACT_SKIP || sbuf->pkt_action == ACT_CALL) {
+		if (sbuf->pkt_action == ACT_REPLACE || sbuf->pkt_action == ACT_SKIP || sbuf->pkt_action == ACT_CALL) {
 			/* send any pending data before skipping */
 			if (iobuf_amount_pending(io) > 0) {
 				res = sbuf_send_pending(sbuf);
@@ -683,16 +683,15 @@ static bool sbuf_process_pending(SBuf *sbuf)
 			break;
 		case ACT_REPLACE:
 			/* Skip the current packet */
+			slog_debug(NULL, "Sending the packet via `APPEND`");
 			iobuf_tag_send(io, avail);
+			sbuf_send_append(sbuf);
 			break;
 		}
 		sbuf->pkt_remain -= avail;
 	}
 
-	if(sbuf->pkt_action == ACT_REPLACE)
-	{
-		return sbuf_send_append(sbuf);
-	}else
+	slog_debug(NULL,"Sending the packet !!! ");
 	return sbuf_send_pending(sbuf);
 }
 

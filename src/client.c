@@ -1011,7 +1011,9 @@ bool makeready(PgSocket *server, struct prepStmt *ppstmt)
 	
 	if(!addNode(server,server->ignoreAssign))
 		slog_info(server,"Insufficient memory!!!,\n	Unable to store prepared statement %s", ppstmt->ServerStatementID);
-	
+	else
+		slog_info(server,"Node added");
+
 	pktbuf_free(buf);
 	return res;
 }
@@ -1112,6 +1114,7 @@ bool verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
 		 * Unable to send the parse packet 
 		 */
 		slog_info(server,"Unable to send the parse packet with prepared statement %s",ServerCopy->ServerStatementID);
+		
 		/* 
 		 * Client application will be returned an error
 		 * "Prepared statement not found", 
@@ -1129,6 +1132,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	SBuf *sbuf = &client->sbuf;
 	int rfq_delta = 0;
 
+	print_content(client,pkt,"Client");
 	switch (pkt->type) {
 
 	/* one-packet queries */
@@ -1170,12 +1174,12 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 			
 			client->link->ignoreAssign++;
 
-			if(pkt->data.data[5]!=0) 
+			if(pkt->data.data[STMTNAME_START_POINT_PARSE]!=0) 
 			{
 				register_pkt(client, pkt);	/* Register the packet */
 											/* Store the starting point of edit */
 				toSkip = 1;
-			}	
+			}
 				
 		break;
 	case 'B':		/* Bind */

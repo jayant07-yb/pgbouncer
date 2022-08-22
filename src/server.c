@@ -97,7 +97,7 @@ static bool handle_server_startup(PgSocket *server, PktHdr *pkt)
 		disconnect_server(server, true, "partial pkt in login phase");
 		return false;
 	}
-	/////print_content(server,pkt,"server");
+
 	/* ignore most that happens during connect_query */
 	if (server->exec_on_connect) {
 		switch (pkt->type) {
@@ -262,10 +262,8 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	PgSocket *client = server->link;
 	bool async_response = false;
 	
-	////print_content(server, pkt, "server");
 	Assert(!server->pool->db->admin);
 	
-
 	switch (pkt->type) {
 	default:
 		slog_error(server, "unknown pkt: '%c'", pkt_desc(pkt));
@@ -274,7 +272,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 
 	/* pooling decisions will be based on this packet */
 	case 'Z':		/* ReadyForQuery */
-		//server->count =0;
+
 		/* if partial pkt, wait */
 		if (!mbuf_get_char(&pkt->data, &state))
 			return false;
@@ -382,11 +380,9 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	server->ready = ready;
 	server->pool->stats.server_bytes += pkt->len;
 
-	if(pkt->type == '1' )	//Check more case
+	if(pkt->type == '1' )
 	{
-		slog_info(NULL, "%d-%d , %d-%d", pkt->data.data[3],pkt->data.data[3],pkt->data.data[4],pkt->data.data[5] );
 		server->ignoreRemove++ ;
-		slog_info(server,"%d ::--:: %d", server->ignoreAssign , server->ignoreRemove);
 		if(server->popNode != NULL && server->popNode->stmtId == server->ignoreRemove)
 		{
 			popNode(server);
@@ -395,14 +391,8 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 			return true;
 	
 		}else
-		{	
-			if(server->popNode )
-			slog_info(server, "Value at %d but required %d" ,  server->ignoreRemove , server->popNode->stmtId);
-		}	
-		
-
+			slog_info(server,"Packet type 1 detected which is not to be skipped with id %d and pop node %d", (server->ignoreRemove, server->popNode == NULL) ? 0 : 1 );
 	}
-
 
 	if (server->setting_vars) {
 		Assert(client);
