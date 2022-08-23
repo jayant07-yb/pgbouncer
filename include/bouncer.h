@@ -490,7 +490,7 @@ struct PgSocket {
 	uint16_t ClientID ;
 
 	pthread_mutex_t lock;
-	bool ignoreStm;
+	int ignoreStm;
 	uint8_t ignoreAssign;
 	uint8_t ignoreRemove;
 	//bool count;

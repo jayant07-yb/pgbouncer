@@ -120,6 +120,7 @@ static void construct_server(void *obj)
 	aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
 	server->ignoreAssign = 0 ;
 	server->ignoreRemove = 0;
+	server->ignoreStm = 0;
 	server->popNode = NULL ;
 }
 

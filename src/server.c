@@ -161,6 +161,9 @@ static bool handle_server_startup(PgSocket *server, PktHdr *pkt)
 		/* got all params */
 		finish_welcome_msg(server);
 
+		server->ignoreAssign = 0;
+		server->ignoreRemove = 0; 
+		assert(server->popNode == NULL); 
 		/* need to notify sbuf if server was closed */
 		res = release_server(server);
 
@@ -253,7 +256,7 @@ void popNode(PgSocket* server)
 /* process packets on logged in connection */
 static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 {	
-	print_content(server,pkt,"Server");
+	//print_content(server,pkt,"Server");
 
 	bool ready = false;
 	bool idle_tx = false;
@@ -274,7 +277,6 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 
 	/* pooling decisions will be based on this packet */
 	case 'Z':		/* ReadyForQuery */
-		//server->count =0;
 		/* if partial pkt, wait */
 		if (!mbuf_get_char(&pkt->data, &state))
 			return false;
@@ -384,24 +386,31 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 
 	if(pkt->type == '1' )	//Check more case
 	{
-		slog_info(NULL, "%d-%d , %d-%d", pkt->data.data[3],pkt->data.data[3],pkt->data.data[4],pkt->data.data[5] );
+		slog_debug(NULL, "%d-%d , %d-%d", pkt->data.data[3],pkt->data.data[3],pkt->data.data[4],pkt->data.data[5] );
 		server->ignoreRemove++ ;
-		slog_info(server,"%d ::--:: %d", server->ignoreAssign , server->ignoreRemove);
+		slog_debug(server,"%d ::--:: %d", server->ignoreAssign , server->ignoreRemove);
 		if(server->popNode != NULL && server->popNode->stmtId == server->ignoreRemove)
 		{
 			popNode(server);
-			slog_info(server, "Packet type 1 detected which is to be skipped %d !!!", server->ignoreRemove);
-			sbuf_prepare_skip(sbuf, pkt->len);
-			return true;
+			slog_debug(server, "Packet type 1 detected which is to be skipped %d !!!", server->ignoreRemove);
+			//sbuf_prepare_skip(sbuf, pkt->len);
+			//return true;
 	
 		}else
 		{	
-			if(server->popNode )
-			slog_info(server, "Value at %d but required %d" ,  server->ignoreRemove , server->popNode->stmtId);
+			if(server->popNode != NULL)
+				slog_debug(server, "Value at %d but required %d" ,  server->ignoreRemove , server->popNode->stmtId);
 		}	
 		
 
 	}
+	if(pkt->type == '1' && server->ignoreStm > 0 )
+	{
+		server->ignoreStm--;
+		sbuf_prepare_skip(sbuf, pkt->len);
+		return true;
+	}
+
 
 
 	if (server->setting_vars) {

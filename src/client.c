@@ -916,7 +916,7 @@ struct prepStmt* getPrepStmt(const PgSocket *client, const PktHdr *pkt , bool is
 	struct prepStmt *result = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
 
 	result->ServerStatementID = stmtname(client->ClientID , pkt->data.data , 5, isBegin) ; 
-	slog_info(client->link, "Name :: %s", result->ServerStatementID);
+	slog_debug(client->link, "Name :: %s", result->ServerStatementID);
 	result->size = pkt->len ; 
 	result->realpacket = (uint8_t *)malloc(sizeof(uint8_t )*pkt->len);
 	for(int i=0;i<pkt->len;i++)
@@ -978,18 +978,23 @@ bool matchServerPstmtID(PgSocket *server, int ClientID, PktHdr *pkt, struct prep
 void addNode(PgSocket *server, int val)
 {
 	struct QueueNode *node  = (struct QueueNode *) malloc(sizeof(struct QueueNode ));
+	if(!node)
+		slog_info(server,"Unable to declare memory!!!!!");
 	node->next  = NULL ; 
+	node->stmtId = val ; 
+
 	if(server->pushNode != NULL )
 		server->pushNode->next = node  ;
-	server->pushNode = node ; 
 
+	server->pushNode = node ;
+	
 	if(server->popNode == NULL)
 	{
 		server->popNode = server->pushNode  ; 
-		slog_info(NULL, "Node added");
+		slog_info(server, "Node added");
 	}
 	
-	server->pushNode->stmtId = val ; 
+	
 }
 //Call it with the server list 
 void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
@@ -1020,9 +1025,13 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 	
 
 	if(serverIgnore)
-	{	server->ignoreAssign++;	//One extra packet of type 1
+	{	
+		server->ignoreStm++;
+		server->ignoreAssign++;	//One extra packet of type 1
+	slog_info(server,"VALUE::%d", server->ignoreAssign);
 		addNode(server,server->ignoreAssign);
 		slog_info(server,"Adding it to the ignore list %d" , server->ignoreAssign);
+		assert(server->popNode != NULL);	//Since we added a node
 	}else 
 	{
 		slog_info(server, "Not entring the value");
@@ -1030,7 +1039,7 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 	
 	// //change it
 
-	print_contentS(server,buf->buf+buf->send_pos,buf->write_pos - buf->send_pos);	
+	//print_contentS(server,buf->buf+buf->send_pos,buf->write_pos - buf->send_pos);	
 	pktbuf_free(buf);
 }
 
@@ -1154,14 +1163,18 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
 	bool ignoreStmt =1;
 
-	print_content(client, pkt, "client");
 	if(( pkt->type == 'P' || pkt->type == 'B') )
 	{	
 		/* acquire server */
 		if (!find_server(client))
 			return false;
-		if(pkt->type == 'P')
+		if(pkt->type == 'P'){
 			client->link->ignoreAssign++;
+				slog_info(client->link,"VALUE::%d", client->link->ignoreAssign);
+
+		}
+			
+
 
 		/*	Set ignoreStmt	*/
 	
@@ -1246,6 +1259,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	if (!find_server(client))
 		return false;
 
+	//print_content(client->link, pkt, "client");
 	/* postpone rfq change until certain that client will not be paused */
 	if (rfq_delta) {
 		client->expect_rfq_count += rfq_delta;
