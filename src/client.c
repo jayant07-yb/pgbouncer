@@ -974,27 +974,6 @@ bool matchServerPstmtID(PgSocket *server, int ClientID, PktHdr *pkt, struct prep
 	return true;
 }
 
-void addNode(PgSocket *server, int val)
-{
-	struct QueueNode *node  = (struct QueueNode *) malloc(sizeof(struct QueueNode ));
-	if(!node)
-		slog_info(server,"Unable to declare memory!!!!!");
-	node->next  = NULL ; 
-	node->stmtId = val ; 
-
-	if(server->pushNode != NULL )
-		server->pushNode->next = node  ;
-
-	server->pushNode = node ;
-	
-	if(server->popNode == NULL)
-	{
-		server->popNode = server->pushNode  ; 
-		slog_info(server, "Node added");
-	}
-	
-	
-}
 //Call it with the server list 
 void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 {	
@@ -1026,10 +1005,9 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 	if(serverIgnore)
 	{	
 		server->ignoreStm++;
-		assert(server->popNode != NULL);	//Since we added a node
 	}else 
 	{
-		slog_info(server, "Not entring the value");
+		slog_debug(server, "Not entring the value");
 	}
 	
 	// //change it
@@ -1082,20 +1060,20 @@ void verifyPrepStmt(PgSocket *server,  PktHdr *pkt, bool isBegin)
 		return ;
 
 	//Prepare the statement
-	slog_info(server->link,"Need to prepare the statment");
+	slog_debug(server->link,"Need to prepare the statment");
 	struct AANode *node;
 	node = aatree_search(&server->link->stmt_tree, (uintptr_t)name);
 	struct prepStmt* ClientCopy = node ? container_of(node, struct prepStmt , tree_node) : NULL;
 	if(ClientCopy == NULL) 
 	{
-		slog_info(NULL, "Not found");
+		slog_debug(NULL, "Not found");
 		return ;
 	}
 
 	struct prepStmt* ServerCopy = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
 	copyValues(ServerCopy, ClientCopy);
 	assert(strcmp(ServerCopy->ServerStatementID ,ClientCopy->ServerStatementID)==0 );
-	slog_info(server,"Preparing %s  also %s ", ServerCopy->ServerStatementID, ClientCopy->ServerStatementID);
+	slog_debug(server,"Preparing %s  also %s ", ServerCopy->ServerStatementID, ClientCopy->ServerStatementID);
 	aatree_insert(&server->stmt_tree, (uintptr_t)name, &ServerCopy->tree_node);
 	makeready(server,ServerCopy,1);
 }
@@ -1162,12 +1140,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 		/* acquire server */
 		if (!find_server(client))
 			return false;
-		if(pkt->type == 'P'){
-			client->link->ignoreAssign++;
-			slog_debug(client->link,"VALUE::%d", client->link->ignoreAssign);
-		}
-			
-
 
 		/*	Set ignoreStmt	*/
 	

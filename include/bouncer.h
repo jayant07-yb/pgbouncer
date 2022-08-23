@@ -415,9 +415,6 @@ struct PgSocket {
 	char* ignoreStmtName ;
 	struct AATree stmt_tree;
 	bool init ;
-	struct QueueNode *popNode;
-	struct QueueNode *pushNode;
-	
 
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
@@ -491,8 +488,6 @@ struct PgSocket {
 
 	pthread_mutex_t lock;
 	int ignoreStm;
-	uint8_t ignoreAssign;
-	uint8_t ignoreRemove;
 	//bool count;
 };
 

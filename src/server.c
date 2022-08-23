@@ -161,9 +161,7 @@ static bool handle_server_startup(PgSocket *server, PktHdr *pkt)
 		/* got all params */
 		finish_welcome_msg(server);
 
-		server->ignoreAssign = 0;
-		server->ignoreRemove = 0; 
-		assert(server->popNode == NULL); 
+
 		/* need to notify sbuf if server was closed */
 		res = release_server(server);
 
@@ -246,12 +244,6 @@ int user_max_connections(PgUser *user)
 	}
 }
 
-void popNode(PgSocket* server)
-{
-	struct 	QueueNode *node = server->popNode ; 
-	server->popNode =  node->next ;
-	free(node); 
-}
 
 /* process packets on logged in connection */
 static bool handle_server_work(PgSocket *server, PktHdr *pkt)

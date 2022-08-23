@@ -118,10 +118,8 @@ static void construct_server(void *obj)
 	server->state = SV_FREE;
 	// Tree
 	aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
-	server->ignoreAssign = 0 ;
-	server->ignoreRemove = 0;
 	server->ignoreStm = 0;
-	server->popNode = NULL ;
+
 }
 
 /* compare string with PgUser->name, for usage with btree */
