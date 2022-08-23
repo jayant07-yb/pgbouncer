@@ -888,8 +888,7 @@ bool sendD = 0;
 const char mapp[] = {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3','4','5','6','7','8','9','_'};
 char* stmtname(int tempID, const char* data , int startpoint ,bool isBegin)
 {
-	int len =0;
-	for(; data[len+startpoint] !=0  ;len++ ) ;
+	int len =strlen(data+startpoint);
 
 	char *ServerStatementID =(char *)malloc(sizeof(char)*(len+2+ 3)) ; //Change the size
 	
@@ -936,7 +935,6 @@ void register_pkt(PgSocket *client, PktHdr *pkt , bool isBegin)
 
 	psmt1 = getPrepStmt(client, pkt , isBegin);
 	psmt2 = getPrepStmt(client, pkt , isBegin);
-	copyValues(psmt1, psmt2);
 
 	struct prepStmtlist *temp;
 	
@@ -946,7 +944,8 @@ void register_pkt(PgSocket *client, PktHdr *pkt , bool isBegin)
 	
 	aatree_insert(&(client->link->stmt_tree), (uintptr_t)psmt2->ServerStatementID, &psmt2->tree_node);
 	
-	slog_info(client->link,"Preparing %s also %s ", psmt2->ServerStatementID , psmt1->ServerStatementID);
+	assert(strcmp(psmt1->ServerStatementID,psmt2->ServerStatementID)==0);
+	slog_debug(client->link,"Preparing %s also %s ", psmt2->ServerStatementID , psmt1->ServerStatementID);
 
 	/* Prepare the new Packet */
 	makeready(client->link,psmt2,0);	//change it to 0
@@ -1027,10 +1026,6 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 	if(serverIgnore)
 	{	
 		server->ignoreStm++;
-		server->ignoreAssign++;	//One extra packet of type 1
-	slog_info(server,"VALUE::%d", server->ignoreAssign);
-		addNode(server,server->ignoreAssign);
-		slog_info(server,"Adding it to the ignore list %d" , server->ignoreAssign);
 		assert(server->popNode != NULL);	//Since we added a node
 	}else 
 	{
@@ -1049,9 +1044,7 @@ void copyValues(struct prepStmt *dest,  struct prepStmt *src)
 	(dest->size) = src->size ;
 	int stmtlen = strlen(src->ServerStatementID) ;
 	dest->ServerStatementID = (char * )malloc(sizeof(char) * (1+stmtlen));
-
-	for(int i =0; i < stmtlen ;i++)
-		dest->ServerStatementID[i] = src->ServerStatementID[i] ;		//This is the only way of copying 
+	strcpy(dest->ServerStatementID , src->ServerStatementID);
 
 	dest->realpacket = (char * )malloc(sizeof(char)*(dest->size));
 	for(int i=0 ;i<dest->size ;i++)
@@ -1101,6 +1094,7 @@ void verifyPrepStmt(PgSocket *server,  PktHdr *pkt, bool isBegin)
 
 	struct prepStmt* ServerCopy = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
 	copyValues(ServerCopy, ClientCopy);
+	assert(strcmp(ServerCopy->ServerStatementID ,ClientCopy->ServerStatementID)==0 );
 	slog_info(server,"Preparing %s  also %s ", ServerCopy->ServerStatementID, ClientCopy->ServerStatementID);
 	aatree_insert(&server->stmt_tree, (uintptr_t)name, &ServerCopy->tree_node);
 	makeready(server,ServerCopy,1);
@@ -1170,8 +1164,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 			return false;
 		if(pkt->type == 'P'){
 			client->link->ignoreAssign++;
-				slog_info(client->link,"VALUE::%d", client->link->ignoreAssign);
-
+			slog_debug(client->link,"VALUE::%d", client->link->ignoreAssign);
 		}
 			
 

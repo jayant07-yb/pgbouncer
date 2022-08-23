@@ -384,26 +384,6 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	server->ready = ready;
 	server->pool->stats.server_bytes += pkt->len;
 
-	if(pkt->type == '1' )	//Check more case
-	{
-		slog_debug(NULL, "%d-%d , %d-%d", pkt->data.data[3],pkt->data.data[3],pkt->data.data[4],pkt->data.data[5] );
-		server->ignoreRemove++ ;
-		slog_debug(server,"%d ::--:: %d", server->ignoreAssign , server->ignoreRemove);
-		if(server->popNode != NULL && server->popNode->stmtId == server->ignoreRemove)
-		{
-			popNode(server);
-			slog_debug(server, "Packet type 1 detected which is to be skipped %d !!!", server->ignoreRemove);
-			//sbuf_prepare_skip(sbuf, pkt->len);
-			//return true;
-	
-		}else
-		{	
-			if(server->popNode != NULL)
-				slog_debug(server, "Value at %d but required %d" ,  server->ignoreRemove , server->popNode->stmtId);
-		}	
-		
-
-	}
 	if(pkt->type == '1' && server->ignoreStm > 0 )
 	{
 		server->ignoreStm--;
