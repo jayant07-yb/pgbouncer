@@ -1020,16 +1020,17 @@ void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
 	
 
 	if(serverIgnore)
-	{	addNode(server,server->ignoreAssign);
+	{	server->ignoreAssign++;	//One extra packet of type 1
+		addNode(server,server->ignoreAssign);
 		slog_info(server,"Adding it to the ignore list %d" , server->ignoreAssign);
 	}else 
 	{
 		slog_info(server, "Not entring the value");
 	}
 	
-	//server->ignoreAssign++; //change it
+	// //change it
 
-	print_contentS(server,buf->buf,buf->buf_len);	
+	print_contentS(server,buf->buf+buf->send_pos,buf->write_pos - buf->send_pos);	
 	pktbuf_free(buf);
 }
 
@@ -1272,8 +1273,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 		{	sbuf_prepare_skip(sbuf, pkt->len);
 			return true ; 
 		}
-	//
-
 
 	sendExec(client,pkt);
 	sbuf_prepare_skip(sbuf,pkt->len);
