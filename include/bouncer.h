@@ -290,14 +290,11 @@ struct PgPool {
 
 	int16_t rrcounter;		/* round-robin counter */
 
-	uint16_t client_counter ; /*Will be modified */
-
-
-	/*
-	1.	Any prepared Statement will be mapped from the 
-		S_{ID} to {ClientID}{ID}.
-	2.	This {ClientID} will be required to point to an orignal one.
-	*/
+	uint16_t client_counter ; 	/* 
+								 * number of clients in the pool 
+								 * used to allocate the client_id for the clients
+								 * --needs to be modified
+								 */
 };
 
 #define pool_connected_server_count(pool) ( \
