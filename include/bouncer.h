@@ -382,28 +382,17 @@ struct PgDatabase {
 };
 
 
-
+/*
+ * A prepared statement
+ * Used for both server and client connection 
+ * to store the information regarding a prepared statement
+ */
 struct prepStmt{
-	char *ServerStatementID; //The statement ID for matching purposes
-	uint8_t *realpacket ; 
-	int size;
-	int sizeID;
+	char *server_side_prepare_statement_id;	/* id of the prepare statement on the server connection, throughout the pool */
+	uint8_t *parse_packet ;	/* parse packet receive */
+	uint8_t parsepacket_len;	/* size of the parese packet received */
 
-	struct AANode tree_node;
-	//For Close Statements
-	char *closeStmt; 
-	int closeStmtSize;
-};
-
-struct prepStmtlist{
-	struct prepStmtlist *next, *prev ; //For iterating
-	struct prepStmt *prepstmt;
-};
-
-struct QueueNode {
-	int stmtId ; 
-	struct QueueNode *next;
-
+	struct AANode tree_node;	/* tree node which is used to store in AATree */
 };
 
 /*
