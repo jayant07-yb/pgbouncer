@@ -398,9 +398,7 @@ struct prepStmt{
  * ->state corresponds to various lists the struct can be at.
  */
 struct PgSocket {
-	char* ignoreStmtName ;
-	struct AATree stmt_tree;
-	bool init ;
+	struct AATree stmt_tree; /* AATree used to store the prepared statement in the client/server connection */
 
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
@@ -470,11 +468,13 @@ struct PgSocket {
 
 	SBuf sbuf;		/* stream buffer, must be last */
 
-	uint16_t ClientID ;
+	uint16_t client_id ;	/* 
+							 * client id of a client connection 
+						 	 * --defined only for client connection 
+						 	 */
 
-	pthread_mutex_t lock;
-	int ignoreStm;
-	//bool count;
+	uint64_t skip_pkt_1;		/* number of packets of type `1` which is to be skipped (not forwarded to the client connection */
+
 };
 
 #define RAW_IOBUF_SIZE	offsetof(IOBuf, buf)
@@ -625,4 +625,3 @@ void load_config(void);
 bool set_config_param(const char *key, const char *val);
 void config_for_each(void (*param_cb)(void *arg, const char *name, const char *val, const char *defval, bool reloadable),
 		     void *arg);
-
