@@ -1196,7 +1196,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	if (!find_server(client))
 		return false;
 
-	//print_content(client->link, pkt, "client");
 	/* postpone rfq change until certain that client will not be paused */
 	if (rfq_delta) {
 		client->expect_rfq_count += rfq_delta;
