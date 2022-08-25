@@ -97,6 +97,7 @@ static bool handle_server_startup(PgSocket *server, PktHdr *pkt)
 		disconnect_server(server, true, "partial pkt in login phase");
 		return false;
 	}
+
 	/* ignore most that happens during connect_query */
 	if (server->exec_on_connect) {
 		switch (pkt->type) {
@@ -244,15 +245,14 @@ int user_max_connections(PgUser *user)
 
 /* process packets on logged in connection */
 static bool handle_server_work(PgSocket *server, PktHdr *pkt)
-{	
-
+{
 	bool ready = false;
 	bool idle_tx = false;
 	char state;
 	SBuf *sbuf = &server->sbuf;
 	PgSocket *client = server->link;
 	bool async_response = false;
-	
+
 	Assert(!server->pool->db->admin);
 
 	switch (pkt->type) {
@@ -303,8 +303,6 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	 */
 	case 'E':		/* ErrorResponse */
 		if (server->setting_vars) {
-			/*
-				Search for the 
 			/*
 			 * the SET and user query will be different TX
 			 * so we cannot report SET error to user.
@@ -382,7 +380,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	} else if (client) {
 		if (client->state == CL_LOGIN) {
 			return handle_auth_query_response(client, pkt);
-		}else {
+		} else {
 			sbuf_prepare_send(sbuf, &client->sbuf, pkt->len);
 
 			/*
