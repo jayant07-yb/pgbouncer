@@ -387,7 +387,7 @@ struct PgDatabase {
 struct prepStmt{
 	char *server_side_prepare_statement_id;	/* id of the prepare statement on the server connection, throughout the pool */
 	uint8_t *parse_packet ;	/* parse packet receive */
-	uint8_t parsepacket_len;	/* size of the parese packet received */
+	uint8_t parse_packet_len;	/* size of the parese packet received */
 
 	struct AANode tree_node;	/* tree node which is used to store in AATree */
 };
