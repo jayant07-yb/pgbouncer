@@ -1188,7 +1188,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 	if (client->pool->db->admin)
 	{
-		//slog_info(client,"Admin user detected");  See the use case
 		return admin_handle_client(client, pkt);
 
 	}

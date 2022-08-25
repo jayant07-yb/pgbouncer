@@ -823,16 +823,13 @@ bool release_server(PgSocket *server)
 	slog_noise(server, "release_server: new state=%d", newstate);
 	change_server_state(server, newstate);
 
-	if (newstate == SV_IDLE) {
+if (newstate == SV_IDLE) {
 		/* immediately process waiters, to give fair chance */
 		return reuse_on_release(server);
 	} else if (newstate == SV_TESTED) {
 		return reset_on_release(server);
 	}
-	/*
-	1. Get the client to which the server was connected to
-	2. Reset the map
-	*/
+
 	return true;
 }
 
