@@ -1252,11 +1252,8 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	}
 
 	if (client->pool->db->admin)
-	{
 		return admin_handle_client(client, pkt);
 
-	}
-		
 	/* acquire server */
 	if (!find_server(client))
 		return false;
@@ -1292,7 +1289,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	send_immediate_one_pkt(client,pkt);
 	sbuf_prepare_skip(sbuf,pkt->len);
 	//sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
-
 	return true;
 }
 
