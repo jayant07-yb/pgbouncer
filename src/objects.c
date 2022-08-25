@@ -85,7 +85,7 @@ static int stmt_node_cmp(uintptr_t userptr, struct AANode *node)
 {
 	const char *name = (const char *)userptr;
 	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
-	return strcmp(name, user->ServerStatementID);
+	return strcmp(name, user->server_side_prepare_statement_id);
 }
 
 /* destroy PgUser, for usage with btree */
@@ -99,6 +99,7 @@ static void stmt_node_release(struct AANode *node, void *arg)
 static void construct_client(void *obj)
 {
 	PgSocket *client = obj;
+
 	memset(client, 0, sizeof(PgSocket));
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
@@ -117,7 +118,7 @@ static void construct_server(void *obj)
 	server->state = SV_FREE;
 	// Tree
 	aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
-	server->ignoreStm = 0;
+	server->skip_pkt_1 = 0;
 
 }
 
