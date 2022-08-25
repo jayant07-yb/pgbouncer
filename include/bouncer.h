@@ -384,7 +384,7 @@ struct PgDatabase {
  * Used for both server and client connection 
  * to store the information regarding a prepared statement
  */
-struct prepStmt{
+struct PrepStmt{
 	char *server_side_prepare_statement_id;	/* id of the prepare statement on the server connection, throughout the pool */
 	uint8_t *parse_packet ;	/* parse packet receive */
 	uint8_t parse_packet_len;	/* size of the parese packet received */

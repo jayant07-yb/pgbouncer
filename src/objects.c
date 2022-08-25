@@ -84,14 +84,14 @@ int get_active_server_count(void)
 static int stmt_node_cmp(uintptr_t userptr, struct AANode *node)
 {
 	const char *name = (const char *)userptr;
-	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
+	struct PrepStmt *user = container_of(node, struct PrepStmt, tree_node);
 	return strcmp(name, user->server_side_prepare_statement_id);
 }
 
 /* destroy PgUser, for usage with btree */
 static void stmt_node_release(struct AANode *node, void *arg)
 {
-	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
+	struct PrepStmt *user = container_of(node, struct PrepStmt, tree_node);
 	slab_free(user_cache, user);
 }
 
