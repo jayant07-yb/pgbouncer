@@ -1175,13 +1175,6 @@ void send_bind_pkt(PgSocket *client, struct PktHdr *pkt , int startingpoint)
 /* decide on packets of logged-in client */
 static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
-	if(( pkt->type == 'P' || pkt->type == 'B') )
-	{	
-		/* acquire server */
-		if (!find_server(client))
-			return false;
-	}
-
 	SBuf *sbuf = &client->sbuf;
 	int rfq_delta = 0;
 
@@ -1218,9 +1211,17 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	 */
 	case 'P':		/* Parse */
 		if(pkt->data.data[STMTNAME_START_PARSE] != 0 )
+		{	
+			/* acquire server */
+			if (!find_server(client))
+				return false;
 			process_name_parse_packet(client, pkt);
-		break;
+		}
+			break;
 	case 'B':		/* Bind */
+		/* acquire server */
+		if (!find_server(client))
+			return false;
 		create_if_not_exist_ppstmt(client->link,pkt);
 	case 'E':		/* Execute */
 	case 'C':		/* Close */
