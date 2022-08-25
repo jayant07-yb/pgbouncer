@@ -526,9 +526,8 @@ static PgPool *new_pool(PgDatabase *db, PgUser *user)
 
 	pool->user = user;
 	pool->db = db;
-	
 	pool->client_counter = 0;//Reset the value here
-	
+
 	statlist_init(&pool->active_client_list, "active_client_list");
 	statlist_init(&pool->waiting_client_list, "waiting_client_list");
 	statlist_init(&pool->active_server_list, "active_server_list");
@@ -823,7 +822,7 @@ bool release_server(PgSocket *server)
 	slog_noise(server, "release_server: new state=%d", newstate);
 	change_server_state(server, newstate);
 
-if (newstate == SV_IDLE) {
+	if (newstate == SV_IDLE) {
 		/* immediately process waiters, to give fair chance */
 		return reuse_on_release(server);
 	} else if (newstate == SV_TESTED) {
