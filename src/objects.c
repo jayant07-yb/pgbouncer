@@ -99,12 +99,11 @@ static void stmt_node_release(struct AANode *node, void *arg)
 static void construct_client(void *obj)
 {
 	PgSocket *client = obj;
-//	slog_info(client,"Constructor Called");
 	memset(client, 0, sizeof(PgSocket));
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
 	client->state = CL_FREE;
-	client->ClientID = 0;
+	client->client_id = 0;
 	aatree_init( &(client->stmt_tree), stmt_node_cmp ,stmt_node_release);
 }
 

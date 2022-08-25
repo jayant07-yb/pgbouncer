@@ -63,7 +63,7 @@ enum WaitType {
 
 #define AssertActive(sbuf) do { \
 	Assert((sbuf)->sock > 0); \
-	(sbuf); \
+	AssertSanity(sbuf); \
 } while (0)
 
 /* declare static stuff */
@@ -214,7 +214,7 @@ bool sbuf_pause(SBuf *sbuf)
 
 /* resume from pause, start waiting for data */
 void sbuf_continue(SBuf *sbuf)
-{	
+{
 	bool do_recv = DO_RECV;
 	bool res;
 	AssertActive(sbuf);
@@ -222,7 +222,6 @@ void sbuf_continue(SBuf *sbuf)
 	res = sbuf_wait_for_data(sbuf);
 	if (!res) {
 		/* drop if problems */
-
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 		return;
 	}
@@ -413,15 +412,12 @@ static bool sbuf_wait_for_data(SBuf *sbuf)
 
 static void sbuf_recv_forced_cb(evutil_socket_t sock, short flags, void *arg)
 {
-	//This might be usefull
 	SBuf *sbuf = arg;
-	slog_info(NULL, "ENtered heere");
 	sbuf->wait_type = W_NONE;
 
 	if (sbuf_wait_for_data(sbuf)) {
 		sbuf_recv_cb(sock, flags, arg);
 	} else {
-
 		sbuf_call_proto(sbuf, SBUF_EV_RECV_FAILED);
 	}
 }

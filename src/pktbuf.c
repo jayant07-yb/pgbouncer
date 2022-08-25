@@ -311,7 +311,6 @@ void pktbuf_write_generic(PktBuf *buf, int type, const char *pktdesc, ...)
 	pktbuf_start_packet(buf, type);
 
 	va_start(ap, pktdesc);
-
 	while (*adesc) {
 		switch (*adesc) {
 		case 'c':
