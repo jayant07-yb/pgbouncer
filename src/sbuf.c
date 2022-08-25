@@ -413,6 +413,7 @@ static bool sbuf_wait_for_data(SBuf *sbuf)
 static void sbuf_recv_forced_cb(evutil_socket_t sock, short flags, void *arg)
 {
 	SBuf *sbuf = arg;
+
 	sbuf->wait_type = W_NONE;
 
 	if (sbuf_wait_for_data(sbuf)) {
