@@ -242,7 +242,6 @@ int user_max_connections(PgUser *user)
 	}
 }
 
-
 /* process packets on logged in connection */
 static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 {	
