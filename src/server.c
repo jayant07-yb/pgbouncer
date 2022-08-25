@@ -254,7 +254,6 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	bool async_response = false;
 	
 	Assert(!server->pool->db->admin);
-	
 
 	switch (pkt->type) {
 	default:
@@ -377,8 +376,6 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 		return true;
 	}
 
-
-
 	if (server->setting_vars) {
 		Assert(client);
 		sbuf_prepare_skip(sbuf, pkt->len);
@@ -435,7 +432,6 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 			slog_warning(server,
 				     "got packet '%c' from server when not linked",
 				     pkt_desc(pkt));
-
 		sbuf_prepare_skip(sbuf, pkt->len);
 	}
 
@@ -529,7 +525,6 @@ static bool handle_sslchar(PgSocket *server, struct MBuf *data)
 /* callback from SBuf */
 bool server_proto(SBuf *sbuf, SBufEvent evtype, struct MBuf *data)
 {
-	
 	bool res = false;
 	PgSocket *server = container_of(sbuf, PgSocket, sbuf);
 	PgPool *pool = server->pool;
