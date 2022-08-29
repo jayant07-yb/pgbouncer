@@ -526,7 +526,7 @@ static PgPool *new_pool(PgDatabase *db, PgUser *user)
 
 	pool->user = user;
 	pool->db = db;
-	pool->client_counter = 0;//Reset the value here
+	pool->client_counter = 0;
 
 	statlist_init(&pool->active_client_list, "active_client_list");
 	statlist_init(&pool->waiting_client_list, "waiting_client_list");
@@ -1917,3 +1917,4 @@ void print_contentS(PgSocket *server, uint8_t *arr , int size)
 }
 
 
+//
