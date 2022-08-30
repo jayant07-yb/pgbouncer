@@ -372,7 +372,7 @@ bool set_pool(PgSocket *client, const char *dbname, const char *username, const 
 		}
 	}
 
-	if(finish_set_pool(client,takeover))
+	if(finish_set_pool(client,takeover) && takeover==false)
 		{
 			assert(client->pool!=NULL);
 			client->ClientID = ++(client->pool->client_counter );
