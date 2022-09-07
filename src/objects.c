@@ -80,6 +80,22 @@ int get_active_server_count(void)
 	return slab_active_count(server_cache);
 }
 
+/* compare string with PgUser->name, for usage with btree */
+static int stmt_node_cmp(uintptr_t userptr, struct AANode *node)
+{
+	const char *name = (const char *)userptr;
+	struct PrepStmt *user = container_of(node, struct PrepStmt, tree_node);
+	return strcmp(name, user->server_side_prepare_statement_id);
+}
+
+/* destroy PgUser, for usage with btree */
+static void stmt_node_release(struct AANode *node, void *arg)
+{
+	struct PrepStmt *user = container_of(node, struct PrepStmt, tree_node);
+	slab_free(user_cache, user);
+}
+
+
 static void construct_client(void *obj)
 {
 	PgSocket *client = obj;
@@ -88,6 +104,8 @@ static void construct_client(void *obj)
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
 	client->state = CL_FREE;
+	client->client_id = 0;
+	aatree_init( &(client->stmt_tree), stmt_node_cmp ,stmt_node_release);
 }
 
 static void construct_server(void *obj)
@@ -98,6 +116,10 @@ static void construct_server(void *obj)
 	list_init(&server->head);
 	sbuf_init(&server->sbuf, server_proto);
 	server->state = SV_FREE;
+	// Tree
+	aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
+	server->skip_pkt_1 = 0;
+
 }
 
 /* compare string with PgUser->name, for usage with btree */
@@ -504,6 +526,7 @@ static PgPool *new_pool(PgDatabase *db, PgUser *user)
 
 	pool->user = user;
 	pool->db = db;
+	pool->client_counter = 0;
 
 	statlist_init(&pool->active_client_list, "active_client_list");
 	statlist_init(&pool->waiting_client_list, "waiting_client_list");
@@ -1851,3 +1874,47 @@ void objects_cleanup(void)
 	slab_destroy(iobuf_cache);
 	iobuf_cache = NULL;
 }
+
+/* Print the contents of a packet */
+void print_content(PgSocket *server, PktHdr *pkt , char desc[8])
+{
+	char output[pkt->len+1];
+
+	for(int itr=0;itr< pkt->len;itr++)
+	{
+		if(*(pkt->data.data + itr) == 0)
+		output[itr-1] = ' '; 
+		else 
+		output[itr-1] = *(pkt->data.data + itr) ;
+	}
+
+	output[pkt->len] = '\0';
+
+	slog_info(server, "Packet received from the %s with the type %c with data->%s ",desc, pkt->type, output);
+	
+}
+
+
+
+
+/* Print the contents of a packet */
+void print_contentS(PgSocket *server, uint8_t *arr , int size)
+{	
+	char output[size+1];
+
+	for(int itr=0;itr< size;itr++)
+	{
+		if(*(arr + itr) == 0)
+		output[itr] = ' '; 
+		else 
+		output[itr] = *(arr + itr) ;
+	}
+
+	output[size] = '\0';
+
+	slog_info(server, "Packet received >%s ",output);
+	
+}
+
+
+//
