@@ -372,8 +372,9 @@ bool set_pool(PgSocket *client, const char *dbname, const char *username, const 
 		}
 	}
 
+
 	/* if a pool is assigned to the client connection then assign the client_id */
-	if(finish_set_pool(client,takeover))
+	if(finish_set_pool(client,takeover)==true  && client->pool!=NULL)
 		{
 			
 			client->client_id = ++(client->pool->client_counter );
