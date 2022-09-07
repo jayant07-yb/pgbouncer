@@ -290,14 +290,11 @@ struct PgPool {
 
 	int16_t rrcounter;		/* round-robin counter */
 
-	uint16_t client_counter ; /*Will be modified */
-
-
-	/*
-	1.	Any prepared Statement will be mapped from the 
-		S_{ID} to {ClientID}{ID}.
-	2.	This {ClientID} will be required to point to an orignal one.
-	*/
+	uint16_t client_counter ; 	/* 
+								 * number of clients in the pool 
+								 * used to allocate the client_id for the clients
+								 * --needs to be modified
+								 */
 };
 
 #define pool_connected_server_count(pool) ( \
@@ -382,28 +379,17 @@ struct PgDatabase {
 };
 
 
+/*
+ * A prepared statement
+ * Used for both server and client connection 
+ * to store the information regarding a prepared statement
+ */
+struct PrepStmt{
+	char *server_side_prepare_statement_id;	/* id of the prepare statement on the server connection, throughout the pool */
+	uint8_t *parse_packet ;	/* parse packet receive */
+	uint8_t parse_packet_len;	/* size of the parese packet received */
 
-struct prepStmt{
-	char *ServerStatementID; //The statement ID for matching purposes
-	uint8_t *realpacket ; 
-	int size;
-	int sizeID;
-
-	struct AANode tree_node;
-	//For Close Statements
-	char *closeStmt; 
-	int closeStmtSize;
-};
-
-struct prepStmtlist{
-	struct prepStmtlist *next, *prev ; //For iterating
-	struct prepStmt *prepstmt;
-};
-
-struct QueueNode {
-	int stmtId ; 
-	struct QueueNode *next;
-
+	struct AANode tree_node;	/* tree node which is used to store in AATree */
 };
 
 /*
@@ -412,9 +398,7 @@ struct QueueNode {
  * ->state corresponds to various lists the struct can be at.
  */
 struct PgSocket {
-	char* ignoreStmtName ;
-	struct AATree stmt_tree;
-	bool init ;
+	struct AATree stmt_tree; /* AATree used to store the prepared statement in the client/server connection */
 
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
@@ -484,11 +468,13 @@ struct PgSocket {
 
 	SBuf sbuf;		/* stream buffer, must be last */
 
-	uint16_t ClientID ;
+	uint16_t client_id ;	/* 
+							 * client id of a client connection 
+						 	 * --defined only for client connection 
+						 	 */
 
-	pthread_mutex_t lock;
-	int ignoreStm;
-	//bool count;
+	uint64_t skip_pkt_1;		/* number of packets of type `1` which is to be skipped (not forwarded to the client connection */
+
 };
 
 #define RAW_IOBUF_SIZE	offsetof(IOBuf, buf)
@@ -639,4 +625,3 @@ void load_config(void);
 bool set_config_param(const char *key, const char *val);
 void config_for_each(void (*param_cb)(void *arg, const char *name, const char *val, const char *defval, bool reloadable),
 		     void *arg);
-

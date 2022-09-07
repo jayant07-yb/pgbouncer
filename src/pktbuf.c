@@ -309,10 +309,8 @@ void pktbuf_write_generic(PktBuf *buf, int type, const char *pktdesc, ...)
 	uint8_t *bin;
 
 	pktbuf_start_packet(buf, type);
-	
-	va_start(ap, pktdesc);
-	//slog_info(NULL,"Reache here successfully%c , %c", type , *pktdesc );
 
+	va_start(ap, pktdesc);
 	while (*adesc) {
 		switch (*adesc) {
 		case 'c':
@@ -333,9 +331,7 @@ void pktbuf_write_generic(PktBuf *buf, int type, const char *pktdesc, ...)
 		case 'b':
 			bin = va_arg(ap, uint8_t *);
 			len = va_arg(ap, int);
-			//slog_info(NULL, "Reached inside the case stateement and created the space");
 			pktbuf_put_bytes(buf, bin, len);
-			//slog_info(NULL,"Putted the bytes");
 			break;
 		default:
 			fatal("bad pktdesc: %s", pktdesc);

@@ -6,7 +6,7 @@
 cd $(dirname $0)
 
 export PGDATA=$PWD/pgdata
-export PGHOST=10.150.4.254
+export PGHOST=127.0.0.1
 export PGPORT=6667
 export EF_ALLOW_MALLOC_0=1
 export LC_ALL=C
@@ -21,7 +21,7 @@ BOUNCER_EXE="$BOUNCER_EXE_PREFIX ../pgbouncer"
 BOUNCER_ADMIN_HOST=/tmp
 
 LOGDIR=log
-PG_PORT=5400
+PG_PORT=6666
 PG_LOG=$LOGDIR/pg.log
 
 pgctl() {
@@ -75,7 +75,7 @@ else
 fi
 
 if ! $use_unix_sockets; then
-	BOUNCER_ADMIN_HOST=10.150.4.254
+	BOUNCER_ADMIN_HOST=127.0.0.1
 
 	cp test.ini test.ini.bak
 	echo "unix_socket_dir = ''" >> test.ini
@@ -151,7 +151,7 @@ if [ ! -d $PGDATA ]; then
 	if $pg_supports_scram; then
 		cat >pgdata/pg_hba.conf <<-EOF
 		$local  p6   all                scram-sha-256
-		host   p6   all  10.150.4.254/32  scram-sha-256
+		host   p6   all  127.0.0.1/32  scram-sha-256
 		host   p6   all  ::1/128       scram-sha-256
 		EOF
 	else
@@ -159,13 +159,13 @@ if [ ! -d $PGDATA ]; then
 	fi
 	cat >>pgdata/pg_hba.conf <<-EOF
 	$local  p4   all                password
-	host   p4   all  10.150.4.254/32  password
+	host   p4   all  127.0.0.1/32  password
 	host   p4   all  ::1/128       password
 	$local  p5   all                md5
-	host   p5   all  10.150.4.254/32  md5
+	host   p5   all  127.0.0.1/32  md5
 	host   p5   all  ::1/128       md5
 	$local  all  all                trust
-	host   all  all  10.150.4.254/32  trust
+	host   all  all  127.0.0.1/32  trust
 	host   all  all  ::1/128       trust
 	EOF
 fi
@@ -226,10 +226,10 @@ fw_drop_port() {
 	Linux)
 		sudo iptables -A OUTPUT -p tcp --dport $1 -j DROP;;
 	Darwin)
-		echo "block drop out proto tcp from any to 10.150.4.254 port $1" \
+		echo "block drop out proto tcp from any to 127.0.0.1 port $1" \
 		    | sudo pfctl -f -;;
 	OpenBSD)
-		echo "block drop out proto tcp from any to 10.150.4.254 port $1" \
+		echo "block drop out proto tcp from any to 127.0.0.1 port $1" \
 		    | sudo pfctl -a pgbouncer -f -;;
 	*)
 		echo "Unknown OS"; exit 1;;
@@ -241,10 +241,10 @@ fw_reject_port() {
 	Linux)
 		sudo iptables -A OUTPUT -p tcp --dport $1 -j REJECT --reject-with tcp-reset;;
 	Darwin)
-		echo "block return-rst out proto tcp from any to 10.150.4.254 port $1" \
+		echo "block return-rst out proto tcp from any to 127.0.0.1 port $1" \
 		    | sudo pfctl -f -;;
 	OpenBSD)
-		echo "block return-rst out proto tcp from any to 10.150.4.254 port $1" \
+		echo "block return-rst out proto tcp from any to 127.0.0.1 port $1" \
 		    | sudo pfctl -a pgbouncer -f -;;
 	*)
 		echo "Unknown OS"; exit 1;;
@@ -1371,8 +1371,8 @@ test_host_list() {
 	psql -X -d hostlist1 -c 'select 1'
 	psql -X -d hostlist1 -c 'select 2'
 
-	grep -F 'hostlist1/bouncer@10.150.4.254:5400 new connection to server' $BOUNCER_LOG || return 1
-	grep -F 'hostlist1/bouncer@[::1]:5400 new connection to server' $BOUNCER_LOG || return 1
+	grep -F 'hostlist1/bouncer@127.0.0.1:6666 new connection to server' $BOUNCER_LOG || return 1
+	grep -F 'hostlist1/bouncer@[::1]:6666 new connection to server' $BOUNCER_LOG || return 1
 	return 0
 }
 
@@ -1386,7 +1386,7 @@ test_host_list_dummy() {
 	psql -X -d hostlist2 -c 'select 1'
 	psql -X -d hostlist2 -c 'select 2'
 
-	grep -F 'hostlist2/bouncer@10.150.4.254:5400 new connection to server' $BOUNCER_LOG || return 1
+	grep -F 'hostlist2/bouncer@127.0.0.1:6666 new connection to server' $BOUNCER_LOG || return 1
 	return 0
 }
 

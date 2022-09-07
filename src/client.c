@@ -372,9 +372,12 @@ bool set_pool(PgSocket *client, const char *dbname, const char *username, const 
 		}
 	}
 
+
+	/* if a pool is assigned to the client connection then assign the client_id */
 	if(finish_set_pool(client,takeover)==true  && client->pool!=NULL)
 		{
-			client->ClientID = ++(client->pool->client_counter );
+			
+			client->client_id = ++(client->pool->client_counter );
 			return true;
 		}
 	return false ;
@@ -883,8 +886,6 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 /*
  * Yugabyte Changes 
  */
-bool sendD = 0;
-const char mapp[] = {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3','4','5','6','7','8','9','_'};
 
 #define CLIENTID_SIZE 3
 #define STMTNAME_START_PARSE 5 
@@ -894,235 +895,287 @@ const char mapp[] = {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'
 
 #define MEMORY_ERROR "Unable to allocate memory	!!"
 
+const char client_id_map[] = {'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3','4','5','6','7','8','9','_'};
+
 PktBuf *shared_buf;
-PktBuf *bindpkt ; 
+PktBuf *bind_pkt_buf ; 
+PktBuf *shared_prep_buf;
 
-char* stmtname(int tempID, const char* data , int startpoint)
+char* get_stmt_name(int client_id, const char* bind_or_parse_pkt , u_int8_t client_side_stmt_name_start)
 {
-	int len =strlen(data+startpoint);
+	/*
+	 *
+	 * get the name of the prepared statement
+	 * {client_id} is the client id associated with the client connection				e.g. AAB
+	 * {stmt_id} is the name of the prepared statement given by the client connectoin 	e.g. S_1
+	 * {client_id}{stmt_id} will be the actuall name of the prepared statement  		e.g. AABS_1
+	 * 
+	 * Inputs:
+	 * 	client_id 					--> an integer which will be mapped to a string of length 3
+	 * 	bind_or_parse_pkt			--> bind or parse packet from where the statement name is to be extracted
+	 * 	client_side_stmt_name_start --> the starting point of the prepared statement id in the above packet
+	 * 
+	 */
+	u_int8_t stmt_len =strlen(bind_or_parse_pkt+client_side_stmt_name_start);
 
-	char *ServerStatementID =(char *)malloc(sizeof(char)*(len+2+ CLIENTID_SIZE)) ;
+	char *server_side_prepare_statement_id =(char *)malloc(sizeof(char)*(stmt_len+2+ CLIENTID_SIZE)) ;
 	
-	if(!ServerStatementID)
+	if(!server_side_prepare_statement_id)
 		log_error(MEMORY_ERROR);
 
-	for(int i=0;i<len+5 ;i++ )
-		ServerStatementID[i] =0;
-
-	ServerStatementID[0] = mapp[tempID/(36*36)] ;
-	tempID %= 36*36 ;
-	ServerStatementID[1] = mapp[tempID/(36)] ;
-	tempID %= 36 ; 
-	ServerStatementID[2] = mapp[tempID] ;
+	/* Assign the client_id */
+	server_side_prepare_statement_id[0] = client_id_map[client_id/(36*36)] ;
+	client_id %= 36*36 ;
+	server_side_prepare_statement_id[1] = client_id_map[client_id/(36)] ;
+	client_id %= 36 ; 
+	server_side_prepare_statement_id[2] = client_id_map[client_id] ;
 	
-	strcpy(ServerStatementID + CLIENTID_SIZE,data+startpoint);
-
-	/*for(int itr=0; data[startpoint + itr] > 32 ;itr++)
-	{
-		ServerStatementID[CLIENTID_SIZE+itr] =  data[startpoint+itr] ; 
-	}*/
+	/* Copy rest of the statement_id */
+	strcpy(server_side_prepare_statement_id + CLIENTID_SIZE,bind_or_parse_pkt+client_side_stmt_name_start);
 	
-	return  ServerStatementID ;
+	return  server_side_prepare_statement_id ;
 }
 
-struct prepStmt* getPrepStmt(const PgSocket *client, const PktHdr *pkt){
-	struct prepStmt *result = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
+struct PrepStmt* create_prepstmt_obj(const PgSocket *client, const PktHdr *parse_pkt){
+	/* 
+	 * Prepared statements are stored in the struct `PrepStmt`
+	 * Given a parse packet, construct the prepare stmt obj
+	 */
+	struct PrepStmt *result = (struct PrepStmt *)malloc(sizeof(struct PrepStmt)) ; 
 	if(!result)
 		log_error(MEMORY_ERROR);
 
-	result->ServerStatementID = stmtname(client->ClientID , pkt->data.data , STMTNAME_START_PARSE) ; 
-	result->size = pkt->len ; 
-	result->realpacket = (uint8_t *)malloc(sizeof(uint8_t )*pkt->len);
-	
+	/* Allocate the statement id */
+	result->server_side_prepare_statement_id = get_stmt_name(client->client_id , parse_pkt->data.data , STMTNAME_START_PARSE) ; 
+
 	/*	We need to copy the packet this way only since it contains end of the packet command several times */
-	for(int i=0;i<pkt->len;i++)
-	{
-		result->realpacket[i] = pkt->data.data[i];
-	}
+	result->parse_packet = (uint8_t *)malloc(sizeof(uint8_t )*parse_pkt->len);	
+	for(int i=0;i<parse_pkt->len;i++)
+		result->parse_packet[i] = parse_pkt->data.data[i];
 
 	return result ; 
 }
 
-void register_pkt(PgSocket *client, PktHdr *pkt)
+void process_name_parse_packet(PgSocket *client, PktHdr *pkt)
 {
+	/* 
+	 * parse packets with named prepare stmt will be 
+	 * 1. stored in the clint connection's list of prepared statements
+	 * 2. stored in the server connection's list of prepared statements
+	 * 3. the name of the prepared statement will be changed
+	 * 4. the new parse packer with new prepared statement name will be sent to the server connection
+	 */
+
 	/* Unnamed prepared statements will be forwarded without any changes */
 	if (pkt->data.data[STMTNAME_START_PARSE]==NULL)		
 		return; 						
 
-	struct prepStmt *psmt1 , *psmt2 ; 
+	struct PrepStmt *ppstmt_client_copy , *ppstmt_server_copy ; 
 
-	psmt1 = getPrepStmt(client, pkt);
-	psmt2 = getPrepStmt(client, pkt);
-	assert(strcmp(psmt1->ServerStatementID,psmt2->ServerStatementID)==0);
+	/* Create preparestmt objs for client and server connection */
+	ppstmt_client_copy = create_prepstmt_obj(client, pkt);
+	ppstmt_server_copy = create_prepstmt_obj(client, pkt);
+	assert(strcmp(ppstmt_client_copy->server_side_prepare_statement_id,ppstmt_server_copy->server_side_prepare_statement_id)==0);
 
-	if(!psmt1 || !psmt2)
+	if(!ppstmt_client_copy || !ppstmt_server_copy)
 		log_error(MEMORY_ERROR);
 
-	/*	Add the preparedStatement to client list */
-
-	aatree_insert(&(client->stmt_tree), (uintptr_t)psmt1->ServerStatementID, &psmt1->tree_node);
-	aatree_insert(&(client->link->stmt_tree), (uintptr_t)psmt2->ServerStatementID, &psmt2->tree_node);
+	/*	Add the preparedStatement to client and server stmt tree*/
+	aatree_insert(&(client->stmt_tree), (uintptr_t)ppstmt_client_copy->server_side_prepare_statement_id, &ppstmt_client_copy->tree_node);
+	aatree_insert(&(client->link->stmt_tree), (uintptr_t)ppstmt_server_copy->server_side_prepare_statement_id, &ppstmt_server_copy->tree_node);
 
 	/* Prepare the new Packet */
-	makeready(client->link,psmt2,REGISTER_PSMT_IGNORE);
+	send_parse_pkt(client->link,ppstmt_server_copy,REGISTER_PSMT_IGNORE);
 }
 
-//Call it with the server list 
-void makeready(PgSocket *server, struct prepStmt *ppstmt, bool serverIgnore)
+void send_parse_pkt(PgSocket *server, struct PrepStmt *ppstmt, bool sent_by_client)
 {	
+	/*
+	 * send the parse packet by modifing the prepared statement name 
+	 */
+
 	bool res;
-	PktBuf *buf = pktbuf_dynamic(512);
+	/* allocate the buffer not allocated */
+	if(!shared_prep_buf)
+		shared_prep_buf = pktbuf_dynamic(512);
 
-	/* Parse */
-	pktbuf_start_packet(buf, 'P');
+	/* start the packet with type `P` */
+	pktbuf_start_packet(shared_prep_buf, 'P');
 
-	/* Send the two chars of the client ID	*/
-	int tempID=server->link->ClientID ;
-	pktbuf_put_char(buf,mapp[tempID/(36*36)] );
-	tempID %= 36*36 ;
-	pktbuf_put_char(buf,mapp[tempID/(36)]);
-	tempID %= 36 ; 
-	pktbuf_put_char(buf,mapp[tempID]); ;
+	/* Append the client_id in front of prep stmt id */
+	int client_id=server->link->client_id ;
+	pktbuf_put_char(shared_prep_buf,client_id_map[client_id/(36*36)] );
+	client_id %= 36*36 ;
+	pktbuf_put_char(shared_prep_buf,client_id_map[client_id/(36)]);
+	client_id %= 36 ; 
+	pktbuf_put_char(shared_prep_buf,client_id_map[client_id]); 
 
+	/* copy rest of the packets */
 	/* Need to change the size */
-	for(int i=5;i<ppstmt->size;i++)
-		pktbuf_put_char(buf,ppstmt->realpacket[i]);
+	for(int i=5;i<ppstmt->parse_packet_len;i++)
+		pktbuf_put_char(shared_prep_buf,ppstmt->parse_packet[i]);
 
-	pktbuf_finish_packet(buf);
+	pktbuf_finish_packet(shared_prep_buf);
 
-	res = pktbuf_send_immediate(buf, server);
+	res = pktbuf_send_immediate(shared_prep_buf, server);
 
-	if(res && serverIgnore)
-		server->ignoreStm++;
+	/* 
+	 * if the packet is not sent by the client, and the parse packet is sent successfully then 
+	 * skip one the packet of type `1` (denoting parse complete) comming from the server connection 
+	 */
+	if(res && sent_by_client)
+		server->skip_pkt_1++;
 
-	pktbuf_free(buf);
+	/* reset the buffer so that it can be reused */
+	pktbuf_reset(shared_prep_buf);
 }
 
-void copyValues(struct prepStmt *dest,  struct prepStmt *src)
+void copy_ppstmt_objs(struct PrepStmt *dest,  struct PrepStmt *src)
 {
-	//We need to copy everything except the tree node
-	(dest->size) = src->size ;
-	int stmtlen = strlen(src->ServerStatementID) ;
-	dest->ServerStatementID = (char * )malloc(sizeof(char) * (1+stmtlen));
-	if(!dest->ServerStatementID)
+	/* copy a prepare statement object `src` to `dest` */
+	/* We need to copy everything except the tree node */
+
+	/* allocate the length */
+	dest->parse_packet_len = src->parse_packet_len ;
+	u_int8_t stmtlen = strlen(src->server_side_prepare_statement_id) ;
+	
+	/* allocate the memory */
+	dest->server_side_prepare_statement_id = (char * )malloc(sizeof(char) * (1+stmtlen));
+	if(!dest->server_side_prepare_statement_id)
 		log_error(MEMORY_ERROR);
-	strcpy(dest->ServerStatementID , src->ServerStatementID);
+	strcpy(dest->server_side_prepare_statement_id , src->server_side_prepare_statement_id);
 
-	dest->realpacket = (char * )malloc(sizeof(char)*(dest->size));
-	for(int i=0 ;i<dest->size ;i++)
-		dest->realpacket[i]  =  src->realpacket[i];
+	/* allocate the memory and copy the parse packet*/
+	dest->parse_packet = (char * )malloc(sizeof(char)*(dest->parse_packet_len));
+	for(int i=0 ;i<dest->parse_packet_len ;i++)
+		dest->parse_packet[i]  =  src->parse_packet[i];
 }
 
-int startingPointBindPkt(const PktHdr *pkt)
+u_int8_t starting_point_bind_pkt(const PktHdr *pkt)
 {
-	int ending_point_portal_name = 5 ; 
-	int starting_point_prepared_stmt = ending_point_portal_name+1 ;
-	for( ; pkt->data.data[ending_point_portal_name] != 0 ; ending_point_portal_name++ , starting_point_prepared_stmt++) ;
-	return starting_point_prepared_stmt;
+	/* 
+	 * find the starting point of the prepared statement name in the bind packet 
+	 * | Portal name `/0` | parse packet name .. |
+	 *start of the portal name + length of the portal name + 1( for the null character)
+	 */
+	return PORTALNAME_START_BIND + strlen(pkt->data.data+PORTALNAME_START_BIND) + 1;
 }
 
-void verifyPrepStmt(PgSocket *server,  PktHdr *pkt)
+void create_if_not_exist_ppstmt(PgSocket *server,  PktHdr *pkt)
 {
 	/* 
 	 * Structure of the Bind packet 
 	 * 
 	 * |	B	|	LENGTH	|	PORTALNAME	|	PREPARED STATEMENT NAME	|	VALUES .... |
 	 * Unnamed prepared statements are not to be processed 
+	 * if the prepared statement was prepared by a client connection but is not present on
+	 * the server connection which is currently assigned to the client, prepare the statement
+	 * by sending a pase packet.
 	 * 
+	 * 1. Search in the list of prepared statement in the server connection 
+	 * 		if found, return.
+	 * 2. Search in the list of prepared statement in the client connection.
+	 * 3. Make a copy of the prepared statement object for the server connection.
+	 * 4. Send the relevalent parse packet.
+	 * 5. Add the prepared statement object to the client connection list.
 	*/
 	
-	int prepstmtnamestart  = startingPointBindPkt(pkt);
+	u_int8_t prep_stmt_name_start  = starting_point_bind_pkt(pkt);
 
 	/* Unnamed prepared statments will be forwarded unchanged */
-	if( pkt->data.data[prepstmtnamestart]==0)
+	if( pkt->data.data[prep_stmt_name_start]==0)
 		return ;
 
 	assert(pkt->type == 'B');
 
-	char *name = stmtname(server->link->ClientID , pkt->data.data , prepstmtnamestart) ; 
+	char *name = get_stmt_name(server->link->client_id , pkt->data.data , prep_stmt_name_start) ; 
 	
-	/* Prepared statement is prepared in the server connection*/
+	/* is the prepared statement is prepared in the server connection. */
 	if(aatree_search(&server->stmt_tree, (uintptr_t)name))
 		return ;
 
-	/* Is the prepared statement prepared by the client on any other server connection */
+	/* is the prepared statement prepared by the client on any other server connection. */
 	struct AANode *node;
 	node = aatree_search(&server->link->stmt_tree, (uintptr_t)name);
-	struct prepStmt* ClientCopy = node ? container_of(node, struct prepStmt , tree_node) : NULL;
+	struct PrepStmt* ClientCopy = node ? container_of(node, struct PrepStmt , tree_node) : NULL;
 	if(ClientCopy == NULL) 
 	{
 		slog_debug(NULL, "Not found");
 		return ;
 	}
 
-	/* We need to prepare the statement on the current server connection */
-	struct prepStmt* ServerCopy = (struct prepStmt *)malloc(sizeof(struct prepStmt)) ; 
-	copyValues(ServerCopy, ClientCopy);
-	assert(strcmp(ServerCopy->ServerStatementID ,ClientCopy->ServerStatementID)==0 );
+	/* copy the prepstmt object. */
+	struct PrepStmt* ServerCopy = (struct PrepStmt *)malloc(sizeof(struct PrepStmt)) ; 
+	copy_ppstmt_objs(ServerCopy, ClientCopy);
+	assert(strcmp(ServerCopy->server_side_prepare_statement_id ,ClientCopy->server_side_prepare_statement_id)==0 );
 
+	/* add the prepstmt obj to the list. */
 	aatree_insert(&server->stmt_tree, (uintptr_t)name, &ServerCopy->tree_node);
-	makeready(server,ServerCopy,BIND_PKT_PSMT_IGNORE);
+	/* send the relevalent parse packet. */
+	send_parse_pkt(server,ServerCopy,BIND_PKT_PSMT_IGNORE);
 }
 
-void sendExec(PgSocket *client, struct PktHdr *pkt)
+void send_immediate_one_pkt(PgSocket *client, struct PktHdr *pkt)
 {
+	/* forward one packet to the server connection, immediately */
 	if(!shared_buf)
 		shared_buf = pktbuf_dynamic(512);
-	
-	PktBuf *buf = shared_buf;
 
-	pktbuf_start_packet(buf,*pkt->data.data);
-		pktbuf_put_bytes(buf,pkt->data.data+5,pkt->len-5);
-		pktbuf_finish_packet(buf);
+	/* create the packet with appropiate type */
+	pktbuf_start_packet(shared_buf,*pkt->data.data);
+	/* put the data in the packet */
+	pktbuf_put_bytes(shared_buf,pkt->data.data+5,pkt->len-5);
+	pktbuf_finish_packet(shared_buf);
 	
-	
-	bool res = pktbuf_send_immediate(buf,client->link);
+	/* send the packet */
+	bool res = pktbuf_send_immediate(shared_buf,client->link);
+	/* skip the packet from the sbuf, so that the packets can't be repeated */
 	sbuf_prepare_skip(&client->sbuf,pkt->len);
-	pktbuf_reset(buf);
+	/* reset the buffer so that it can be reused */
+	pktbuf_reset(shared_buf);
 }
 
-void sendBind(PgSocket *client, struct PktHdr *pkt , int startingpoint)
+void send_bind_pkt(PgSocket *client, struct PktHdr *pkt , int startingpoint)
 {
+	/* send one bind packet with modified prepared statement name */
 	bool res;
-	if(!bindpkt) 
-	 	bindpkt = pktbuf_dynamic(512);
-		
-	PktBuf *buf = bindpkt;
+	if(!bind_pkt_buf) 
+	 	bind_pkt_buf = pktbuf_dynamic(512);
+
+	/* 
+	 * packet format to send 
+	 * |	B	|	Portal name | \0 | Client_id ( 3 bytes ) | Prepared statement name | .... 
+	 */
 
 	/* Bind */
-	pktbuf_start_packet(buf, 'B');
+	pktbuf_start_packet(bind_pkt_buf, 'B');
 	
-	/* Need to change the size */
+	/* copy the portal name */
+	pktbuf_put_bytes(bind_pkt_buf,pkt->data.data+PORTALNAME_START_BIND,startingpoint-PORTALNAME_START_BIND); 
+
+	/* put the client_id */
+	int client_id=client->client_id ;
+	pktbuf_put_char(bind_pkt_buf,client_id_map[client_id/(36*36)]);
+	client_id %= 36*36 ;
+	pktbuf_put_char(bind_pkt_buf,client_id_map[client_id/36]);
+	client_id %= 36 ; 
+	pktbuf_put_char(bind_pkt_buf,client_id_map[client_id]);
+
+	/* copy remaining bytes */
+	pktbuf_put_bytes(bind_pkt_buf,pkt->data.data+startingpoint,pkt->len-startingpoint); 
+
+	pktbuf_finish_packet(bind_pkt_buf);
+
+	/* send the bind packet */
+	res = pktbuf_send_immediate(bind_pkt_buf, client->link);
 	
-	for(int i=PORTALNAME_START_BIND  ;i<startingpoint;i++)		//Change the method
-		pktbuf_put_char(buf,pkt->data.data[i]);
-	
-	int tempID=client->ClientID ;
-	pktbuf_put_char(buf,mapp[tempID/(36*36)]);
-	tempID %= 36*36 ;
-	pktbuf_put_char(buf,mapp[tempID/36]);
-	tempID %= 36 ; 
-	pktbuf_put_char(buf,mapp[tempID]);
-
-	for(int i=startingpoint;i<pkt->len;i++)
-		pktbuf_put_char(buf,pkt->data.data[i]);					//Change the method
-
-	pktbuf_finish_packet(buf);
-
-	res = pktbuf_send_immediate(buf, client->link);
-	pktbuf_reset(buf);
+	/* reset the buffer so that it can be reused */
+	pktbuf_reset(bind_pkt_buf);
 }
 
 /* decide on packets of logged-in client */
 static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
-	if(( pkt->type == 'P' || pkt->type == 'B') )
-	{	
-		/* acquire server */
-		if (!find_server(client))
-			return false;
-	}
-
 	SBuf *sbuf = &client->sbuf;
 	int rfq_delta = 0;
 
@@ -1159,10 +1212,18 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	 */
 	case 'P':		/* Parse */
 		if(pkt->data.data[STMTNAME_START_PARSE] != 0 )
-			register_pkt(client, pkt);
-		break;
+		{	
+			/* acquire server */
+			if (!find_server(client))
+				return false;
+			process_name_parse_packet(client, pkt);
+		}
+			break;
 	case 'B':		/* Bind */
-		verifyPrepStmt(client->link,pkt);
+		/* acquire server */
+		if (!find_server(client))
+			return false;
+		create_if_not_exist_ppstmt(client->link,pkt);
 	case 'E':		/* Execute */
 	case 'C':		/* Close */
 	case 'D':		/* Describe */
@@ -1192,17 +1253,12 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	}
 
 	if (client->pool->db->admin)
-	{
-		//slog_info(client,"Admin user detected");  See the use case
 		return admin_handle_client(client, pkt);
 
-	}
-		
 	/* acquire server */
 	if (!find_server(client))
 		return false;
 
-	//print_content(client->link, pkt, "client");
 	/* postpone rfq change until certain that client will not be paused */
 	if (rfq_delta) {
 		client->expect_rfq_count += rfq_delta;
@@ -1217,10 +1273,10 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	/* forward the packet */
 
 	if(pkt->type == 'B' )
-	{	int startppt = startingPointBindPkt(pkt);
+	{	int startppt = starting_point_bind_pkt(pkt);
 		if(pkt->data.data[startppt]  != 0)
 		{
-			sendBind(client,pkt,startppt);
+			send_bind_pkt(client,pkt,startppt);
 			sbuf_prepare_skip(sbuf, pkt->len);
 			return true ;
 		}
@@ -1231,10 +1287,9 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 		return true ; 
 	}
 
-	sendExec(client,pkt);
+	send_immediate_one_pkt(client,pkt);
 	sbuf_prepare_skip(sbuf,pkt->len);
 	//sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
-
 	return true;
 }
 

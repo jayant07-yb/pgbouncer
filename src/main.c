@@ -1010,7 +1010,7 @@ int main(int argc, char *argv[])
 		 tls_backend_version());
 
 	sd_notify(0, "READY=1");
-	
+
 	/* main loop */
 	while (cf_shutdown < 2)
 		main_loop_once();

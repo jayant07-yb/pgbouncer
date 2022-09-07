@@ -84,14 +84,14 @@ int get_active_server_count(void)
 static int stmt_node_cmp(uintptr_t userptr, struct AANode *node)
 {
 	const char *name = (const char *)userptr;
-	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
-	return strcmp(name, user->ServerStatementID);
+	struct PrepStmt *user = container_of(node, struct PrepStmt, tree_node);
+	return strcmp(name, user->server_side_prepare_statement_id);
 }
 
 /* destroy PgUser, for usage with btree */
 static void stmt_node_release(struct AANode *node, void *arg)
 {
-	struct prepStmt *user = container_of(node, struct prepStmt, tree_node);
+	struct PrepStmt *user = container_of(node, struct PrepStmt, tree_node);
 	slab_free(user_cache, user);
 }
 
@@ -99,12 +99,12 @@ static void stmt_node_release(struct AANode *node, void *arg)
 static void construct_client(void *obj)
 {
 	PgSocket *client = obj;
-//	slog_info(client,"Constructor Called");
+
 	memset(client, 0, sizeof(PgSocket));
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
 	client->state = CL_FREE;
-	client->ClientID = 0;
+	client->client_id = 0;
 	aatree_init( &(client->stmt_tree), stmt_node_cmp ,stmt_node_release);
 }
 
@@ -118,7 +118,7 @@ static void construct_server(void *obj)
 	server->state = SV_FREE;
 	// Tree
 	aatree_init( &(server->stmt_tree), stmt_node_cmp ,stmt_node_release);
-	server->ignoreStm = 0;
+	server->skip_pkt_1 = 0;
 
 }
 
@@ -526,9 +526,8 @@ static PgPool *new_pool(PgDatabase *db, PgUser *user)
 
 	pool->user = user;
 	pool->db = db;
-	
-	pool->client_counter = 0;//Reset the value here
-	
+	pool->client_counter = 0;
+
 	statlist_init(&pool->active_client_list, "active_client_list");
 	statlist_init(&pool->waiting_client_list, "waiting_client_list");
 	statlist_init(&pool->active_server_list, "active_server_list");
@@ -829,10 +828,7 @@ bool release_server(PgSocket *server)
 	} else if (newstate == SV_TESTED) {
 		return reset_on_release(server);
 	}
-	/*
-	1. Get the client to which the server was connected to
-	2. Reset the map
-	*/
+
 	return true;
 }
 
@@ -1921,3 +1917,4 @@ void print_contentS(PgSocket *server, uint8_t *arr , int size)
 }
 
 
+//
