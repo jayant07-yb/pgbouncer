@@ -368,6 +368,13 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	server->ready = ready;
 	server->pool->stats.server_bytes += pkt->len;
 
+	if(pkt->type == '1' && server->skip_pkt_1 > 0 )
+	{
+		server->skip_pkt_1--;
+		sbuf_prepare_skip(sbuf, pkt->len);
+		return true;
+	}
+
 	if (server->setting_vars) {
 		Assert(client);
 		sbuf_prepare_skip(sbuf, pkt->len);
